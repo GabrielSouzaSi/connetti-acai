@@ -2,9 +2,31 @@ import { Button } from "@/components/Button"
 import { Field } from "@/components/input"
 import axios from "axios"
 import { router } from "expo-router"
-import { ArrowRight, MapIcon, MapPin, Mars, UserRoundSearch, Venus } from "lucide-react-native"
-import { useState } from "react"
-import { ActivityIndicator, Alert, Image, Keyboard, ScrollView, Text, View } from "react-native"
+import {
+	ArrowRight,
+	Check,
+	ChevronDown,
+	MapIcon,
+	MapPin,
+	Mars,
+	Search,
+	UserRoundSearch,
+	Venus,
+	X,
+} from "lucide-react-native"
+import { useEffect, useMemo, useState } from "react"
+import {
+	ActivityIndicator,
+	Alert,
+	FlatList,
+	Image,
+	Keyboard,
+	Modal,
+	Pressable,
+	ScrollView,
+	Text,
+	View,
+} from "react-native"
 
 type Gender = "masculino" | "feminino" | "outro" | "prefiro_nao_informar"
 type ProfileType = "produtor" | "comprador"
@@ -14,6 +36,34 @@ type ApiError = {
 	error?: string
 	errors?: Array<{ message?: string }> | Record<string, string[]>
 	issues?: Array<{ message?: string }>
+}
+
+type Municipality = {
+	id: number
+	name: string
+	state: string
+	latitude: number | null
+	longitude: number | null
+}
+
+type MunicipalitiesResponse = {
+	message: string
+	data: Municipality[]
+}
+
+type Locality = {
+	id: number
+	municipality_id: number
+	name: string
+	address: string | null
+	latitude: number | null
+	longitude: number | null
+	municipality: Municipality
+}
+
+type LocalitiesResponse = {
+	message: string
+	data: Locality[]
 }
 
 // Instância isolada: não herda o Authorization global configurado no AuthContext.
@@ -32,8 +82,6 @@ authApi.interceptors.request.use((config) => {
 })
 
 const MOCK_LOCATION = {
-	municipality_id: 1,
-	community: "Comunidade Rio Verde",
 	latitude: -1.7218,
 	longitude: -48.8788,
 	id_device: "device-token-ou-identificador",
@@ -48,6 +96,76 @@ export default function Register() {
 	const [password, setPassword] = useState("")
 	const [passwordConfirmation, setPasswordConfirmation] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
+	const [municipalities, setMunicipalities] = useState<Municipality[]>([])
+	const [selectedMunicipality, setSelectedMunicipality] = useState<Municipality | null>(null)
+	const [isMunicipalityModalVisible, setIsMunicipalityModalVisible] = useState(false)
+	const [isLoadingMunicipalities, setIsLoadingMunicipalities] = useState(false)
+	const [municipalitiesError, setMunicipalitiesError] = useState("")
+	const [municipalitySearch, setMunicipalitySearch] = useState("")
+	const [localities, setLocalities] = useState<Locality[]>([])
+	const [selectedLocality, setSelectedLocality] = useState<Locality | null>(null)
+	const [isLocalityModalVisible, setIsLocalityModalVisible] = useState(false)
+	const [isLoadingLocalities, setIsLoadingLocalities] = useState(false)
+	const [localitiesError, setLocalitiesError] = useState("")
+	const [localitySearch, setLocalitySearch] = useState("")
+
+	const filteredMunicipalities = useMemo(() => {
+		const search = municipalitySearch.trim().toLocaleLowerCase("pt-BR")
+		if (!search) return municipalities
+
+		return municipalities.filter((municipality) =>
+			`${municipality.name} ${municipality.state}`
+				.toLocaleLowerCase("pt-BR")
+				.includes(search),
+		)
+	}, [municipalities, municipalitySearch])
+
+	const filteredLocalities = useMemo(() => {
+		if (!selectedMunicipality) return []
+
+		const search = localitySearch.trim().toLocaleLowerCase("pt-BR")
+		return localities.filter((locality) => {
+			const belongsToMunicipality = locality.municipality_id === selectedMunicipality.id
+			const matchesSearch =
+				!search || locality.name.toLocaleLowerCase("pt-BR").includes(search)
+			return belongsToMunicipality && matchesSearch
+		})
+	}, [localities, localitySearch, selectedMunicipality])
+
+	async function loadMunicipalities() {
+		setIsLoadingMunicipalities(true)
+		setMunicipalitiesError("")
+
+		try {
+			const { data } = await authApi.get<MunicipalitiesResponse>("/municipalities")
+			setMunicipalities(data.data)
+		} catch (error) {
+			console.error("Falha ao carregar municípios:", error)
+			setMunicipalitiesError("Não foi possível carregar os municípios.")
+		} finally {
+			setIsLoadingMunicipalities(false)
+		}
+	}
+
+	async function loadLocalities() {
+		setIsLoadingLocalities(true)
+		setLocalitiesError("")
+
+		try {
+			const { data } = await authApi.get<LocalitiesResponse>("/localities")
+			setLocalities(data.data)
+		} catch (error) {
+			console.error("Falha ao carregar comunidades:", error)
+			setLocalitiesError("Não foi possível carregar as comunidades.")
+		} finally {
+			setIsLoadingLocalities(false)
+		}
+	}
+
+	useEffect(() => {
+		void loadMunicipalities()
+		void loadLocalities()
+	}, [])
 
 	function optionClassName(selected: boolean) {
 		return `flex-1 items-center justify-center border p-3 rounded-xl ${
@@ -66,6 +184,8 @@ export default function Register() {
 			!normalizedPhone ||
 			!gender ||
 			!profileType ||
+			!selectedMunicipality ||
+			!selectedLocality ||
 			!password ||
 			!passwordConfirmation
 		) {
@@ -93,14 +213,15 @@ export default function Register() {
 				phone: normalizedPhone,
 				gender,
 				profile_type: profileType,
-				municipality_id: MOCK_LOCATION.municipality_id,
-				community: MOCK_LOCATION.community,
+				municipality_id: selectedMunicipality.id,
+				community: selectedLocality.name,
 				latitude: MOCK_LOCATION.latitude,
 				longitude: MOCK_LOCATION.longitude,
 				id_device: MOCK_LOCATION.id_device,
 				password,
 				password_confirmation: passwordConfirmation,
 			}
+			console.log("Dados: " + JSON.stringify(payload))
 
 			await authApi.post("/register", payload)
 
@@ -251,16 +372,71 @@ export default function Register() {
 					autoComplete="new-password"
 				/>
 
-				<View className="flex-row items-center border border-gray-300 p-3 rounded-xl gap-4">
+				<Text className="text-lg font-bold">Localização</Text>
+				<Pressable
+					onPress={() => setIsMunicipalityModalVisible(true)}
+					disabled={isLoadingMunicipalities}
+					className="flex-row items-center border border-gray-300 p-3 rounded-xl gap-4"
+				>
 					<MapPin size={20} />
-					<Text className="text-base font-medium">
-						Município: {MOCK_LOCATION.municipality_id}
+					<Text
+						className={`flex-1 text-base font-medium ${
+							selectedMunicipality ? "text-gray-900" : "text-gray-500"
+						}`}
+					>
+						{isLoadingMunicipalities
+							? "Carregando municípios..."
+							: selectedMunicipality
+								? `${selectedMunicipality.name} - ${selectedMunicipality.state}`
+								: "Selecione o município"}
 					</Text>
-				</View>
-				<View className="flex-row items-center border border-gray-300 p-3 rounded-xl gap-4">
+					{isLoadingMunicipalities ? (
+						<ActivityIndicator size="small" color="#512B76" />
+					) : (
+						<ChevronDown size={20} />
+					)}
+				</Pressable>
+				{municipalitiesError && (
+					<View className="flex-row items-center justify-between">
+						<Text className="flex-1 text-sm text-red-500">{municipalitiesError}</Text>
+						<Pressable onPress={loadMunicipalities} className="px-3 py-2">
+							<Text className="font-semibold text-primary">Tentar novamente</Text>
+						</Pressable>
+					</View>
+				)}
+				<Pressable
+					onPress={() => setIsLocalityModalVisible(true)}
+					disabled={!selectedMunicipality || isLoadingLocalities}
+					className={`flex-row items-center border border-gray-300 p-3 rounded-xl gap-4 ${
+						!selectedMunicipality ? "opacity-50" : ""
+					}`}
+				>
 					<MapIcon size={20} />
-					<Text className="text-base font-medium">{MOCK_LOCATION.community}</Text>
-				</View>
+					<Text
+						className={`flex-1 text-base font-medium ${
+							selectedLocality ? "text-gray-900" : "text-gray-500"
+						}`}
+					>
+						{!selectedMunicipality
+							? "Selecione primeiro o município"
+							: isLoadingLocalities
+								? "Carregando comunidades..."
+								: selectedLocality?.name || "Selecione a comunidade"}
+					</Text>
+					{isLoadingLocalities ? (
+						<ActivityIndicator size="small" color="#512B76" />
+					) : (
+						<ChevronDown size={20} />
+					)}
+				</Pressable>
+				{localitiesError && (
+					<View className="flex-row items-center justify-between">
+						<Text className="flex-1 text-sm text-red-500">{localitiesError}</Text>
+						<Pressable onPress={loadLocalities} className="px-3 py-2">
+							<Text className="font-semibold text-primary">Tentar novamente</Text>
+						</Pressable>
+					</View>
+				)}
 
 				<Button
 					onPress={handleRegister}
@@ -280,6 +456,173 @@ export default function Register() {
 					{!isSubmitting && <Button.Icon Icon={ArrowRight} size={20} color="white" />}
 				</Button>
 			</View>
+
+			<Modal
+				visible={isMunicipalityModalVisible}
+				transparent
+				animationType="slide"
+				onRequestClose={() => setIsMunicipalityModalVisible(false)}
+			>
+				<View className="flex-1 justify-end bg-black/40">
+					<View className="max-h-[80%] rounded-t-3xl bg-white px-4 pb-6 pt-4">
+						<View className="mb-4 flex-row items-center justify-between">
+							<View>
+								<Text className="text-xl font-bold text-gray-900">
+									Selecione o município
+								</Text>
+								<Text className="text-sm text-gray-500">
+									Escolha uma das opções disponíveis
+								</Text>
+							</View>
+							<Pressable
+								onPress={() => setIsMunicipalityModalVisible(false)}
+								className="rounded-full bg-gray-100 p-2"
+							>
+								<X size={22} color="#374151" />
+							</Pressable>
+						</View>
+
+						<View className="mb-3 flex-row items-center gap-3 rounded-xl border border-gray-300 px-3">
+							<Search size={20} color="#6B7280" />
+							<Field
+								className="flex-1 border-0 px-0"
+								placeholder="Buscar município"
+								value={municipalitySearch}
+								onChangeText={setMunicipalitySearch}
+								autoCapitalize="words"
+							/>
+						</View>
+
+						<FlatList
+							data={filteredMunicipalities}
+							keyExtractor={(item) => String(item.id)}
+							keyboardShouldPersistTaps="handled"
+							showsVerticalScrollIndicator={false}
+							ListEmptyComponent={
+								<Text className="py-8 text-center text-gray-500">
+									Nenhum município encontrado.
+								</Text>
+							}
+							renderItem={({ item }) => {
+								const isSelected = selectedMunicipality?.id === item.id
+
+								return (
+									<Pressable
+										onPress={() => {
+											if (selectedMunicipality?.id !== item.id) {
+												setSelectedLocality(null)
+											}
+											setSelectedMunicipality(item)
+											setMunicipalitySearch("")
+											setIsMunicipalityModalVisible(false)
+										}}
+										className={`mb-2 flex-row items-center rounded-xl border p-4 ${
+											isSelected
+												? "border-primary bg-primaryLight"
+												: "border-gray-200 bg-white"
+										}`}
+									>
+										<MapPin size={20} color="#512B76" />
+										<View className="ml-3 flex-1">
+											<Text className="font-semibold text-gray-900">
+												{item.name}
+											</Text>
+											<Text className="text-sm text-gray-500">
+												{item.state}
+											</Text>
+										</View>
+										{isSelected && <Check size={20} color="#512B76" />}
+									</Pressable>
+								)
+							}}
+						/>
+					</View>
+				</View>
+			</Modal>
+
+			<Modal
+				visible={isLocalityModalVisible}
+				transparent
+				animationType="slide"
+				onRequestClose={() => setIsLocalityModalVisible(false)}
+			>
+				<View className="flex-1 justify-end bg-black/40">
+					<View className="max-h-[80%] rounded-t-3xl bg-white px-4 pb-6 pt-4">
+						<View className="mb-4 flex-row items-center justify-between">
+							<View className="flex-1 pr-4">
+								<Text className="text-xl font-bold text-gray-900">
+									Selecione a comunidade
+								</Text>
+								<Text className="text-sm text-gray-500">
+									{selectedMunicipality
+										? `${selectedMunicipality.name} - ${selectedMunicipality.state}`
+										: "Município não selecionado"}
+								</Text>
+							</View>
+							<Pressable
+								onPress={() => setIsLocalityModalVisible(false)}
+								className="rounded-full bg-gray-100 p-2"
+							>
+								<X size={22} color="#374151" />
+							</Pressable>
+						</View>
+
+						<View className="mb-3 flex-row items-center gap-3 rounded-xl border border-gray-300 px-3">
+							<Search size={20} color="#6B7280" />
+							<Field
+								className="flex-1 border-0 px-0"
+								placeholder="Buscar comunidade"
+								value={localitySearch}
+								onChangeText={setLocalitySearch}
+								autoCapitalize="words"
+							/>
+						</View>
+
+						<FlatList
+							data={filteredLocalities}
+							keyExtractor={(item) => String(item.id)}
+							keyboardShouldPersistTaps="handled"
+							showsVerticalScrollIndicator={false}
+							ListEmptyComponent={
+								<Text className="py-8 text-center text-gray-500">
+									Nenhuma comunidade encontrada para este município.
+								</Text>
+							}
+							renderItem={({ item }) => {
+								const isSelected = selectedLocality?.id === item.id
+
+								return (
+									<Pressable
+										onPress={() => {
+											setSelectedLocality(item)
+											setLocalitySearch("")
+											setIsLocalityModalVisible(false)
+										}}
+										className={`mb-2 flex-row items-center rounded-xl border p-4 ${
+											isSelected
+												? "border-primary bg-primaryLight"
+												: "border-gray-200 bg-white"
+										}`}
+									>
+										<MapIcon size={20} color="#512B76" />
+										<View className="ml-3 flex-1">
+											<Text className="font-semibold text-gray-900">
+												{item.name}
+											</Text>
+											{item.address && (
+												<Text className="text-sm text-gray-500">
+													{item.address}
+												</Text>
+											)}
+										</View>
+										{isSelected && <Check size={20} color="#512B76" />}
+									</Pressable>
+								)
+							}}
+						/>
+					</View>
+				</View>
+			</Modal>
 		</ScrollView>
 	)
 }
