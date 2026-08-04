@@ -19,7 +19,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
 
 type FormData = {
-	email: string
+	identifier: string
 	password: string
 }
 
@@ -36,10 +36,10 @@ export default function App() {
 
 	const [isLoading, setIsLoading] = useState(false)
 
-	async function handleSignIn({ email, password }: FormData) {
+	async function handleSignIn({ identifier, password }: FormData) {
 		setIsLoading(true)
 		try {
-			await signIn(email.toLowerCase(), password)
+			await signIn(identifier, password)
 			// Toast.show({
 			// 	type: "success",
 			// 	text1: "Login realizado!",
@@ -110,26 +110,24 @@ export default function App() {
 							<View className="gap-3">
 								<Controller
 									control={control}
-									name="email"
+									name="identifier"
 									rules={{
-										required: "Informe o e-mail!",
-										// pattern: {
-										//   value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-										//   message: "E-mail inválido",
-										// },
+										required: "Informe o e-mail ou telefone!",
 									}}
 									render={({ field: { onChange } }) => (
 										<Field
-											className={`${!!errors.email ? "border-red-500" : ""}`}
-											placeholder="E-mail"
+											className={`${!!errors.identifier ? "border-red-500" : ""}`}
+											placeholder="E-mail ou telefone"
 											onChangeText={onChange}
+											autoCapitalize="none"
+											autoCorrect={false}
 										/>
 									)}
 								/>
 
-								{errors.email?.message && (
+								{errors.identifier?.message && (
 									<Text className="font-regular font-bold text-lg text-red-500">
-										{errors.email.message}
+										{errors.identifier.message}
 									</Text>
 								)}
 
@@ -146,7 +144,7 @@ export default function App() {
 											secureTextEntry
 											textContentType="password"
 											onChangeText={onChange}
-											onSubmitEditing={() => handleSubmit(handleSignIn)}
+											onSubmitEditing={handleSubmit(handleSignIn)}
 											returnKeyType="send"
 										/>
 									)}
