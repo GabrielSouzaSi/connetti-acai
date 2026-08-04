@@ -14,7 +14,7 @@ export type AuthContextDataProps = {
 	user: UserDTO | null
 	isBootstrapping: boolean // <— só no boot
 	authSubmitting: boolean // <— login/logout em andamento
-	signIn: (cpf: string, password: string) => Promise<void>
+	signIn: (identifier: string, password: string) => Promise<void>
 	signOut: () => Promise<void>
 }
 
@@ -38,15 +38,15 @@ export function AuthContextProvider({ children }: AuthContextProviderProps) {
 		}
 	}
 
-	async function signIn(email: string, password: string) {
+	async function signIn(identifier: string, password: string) {
 		setAuthSubmitting(true)
 		try {
-			// const { data } = await server.post("/login", {
-			// 	email,
-			// 	password,
-			// })
-			const { data } = await axios.post("https://fastify-auth-api.onrender.com/login/acai", {
-				email,
+			const normalizedIdentifier = identifier.includes("@")
+				? identifier.trim().toLowerCase()
+				: identifier.replace(/\D/g, "")
+
+			const { data } = await server.post("/login/acai", {
+				identifier: normalizedIdentifier,
 				password,
 			})
 			console.log(data)
