@@ -39,7 +39,7 @@ const options: readonly MenuOption[] = [
 		description: "Gerencie suas ofertas ativas e histórico",
 		icon: Tag,
 		route: "/pages/myOffers",
-		access: "manageSales" as const,
+		access: "manageOffers" as const,
 	},
 	{
 		title: "Verificação",
