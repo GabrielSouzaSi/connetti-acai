@@ -14,8 +14,7 @@ export default function TabSaleScreen() {
 
 	async function loadOffers() {
 		try {
-			// const response = await server.get("/offers")
-			const response = await server.get("https://fastify-auth-api.onrender.com/offers")
+			const response = await server.get("/offers")
 
 			setOffers(response.data.data.data)
 		} catch (error) {
