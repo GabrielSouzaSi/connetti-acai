@@ -1,6 +1,7 @@
 import axios, { AxiosError } from "axios";
+import { API_URL } from "@/config/env";
 const server = axios.create({
-    baseURL: process.env.EXPO_PUBLIC_API_URL,
+    baseURL: API_URL,
     timeout: 180000
 });
 
