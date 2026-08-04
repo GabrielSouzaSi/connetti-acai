@@ -10,7 +10,7 @@ O projeto é desenvolvido com React Native e Expo, com uma experiência adaptada
 - Perfis de produtor e comprador;
 - Controle de acesso baseado em funções e permissões;
 - Listagem e visualização de ofertas de açaí;
-- Criação e gerenciamento de ofertas para produtores;
+- Criação e gerenciamento de ofertas de venda e de compra;
 - Negociações entre compradores e produtores;
 - Mensagens e acompanhamento de transações;
 - Persistência local da sessão;
@@ -132,7 +132,7 @@ Os perfis atualmente reconhecidos são:
 | Perfil da API | Nome exibido | Principais recursos |
 | --- | --- | --- |
 | `producer` | Produtor | Criação e gerenciamento de ofertas |
-| `buyer` | Comprador | Consulta de ofertas e início de negociações |
+| `buyer` | Comprador | Ofertas de compra, consulta de ofertas e negociações |
 
 O aplicativo considera tanto `roles` quanto `permissions` retornados pela API. Para adicionar um perfil, registre seus aliases em `PROFILE_REGISTRY` e associe o perfil ou suas permissões às funcionalidades em `FEATURE_ACCESS`.
 
