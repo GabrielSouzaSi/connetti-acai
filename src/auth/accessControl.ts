@@ -12,8 +12,8 @@ export const PROFILE_REGISTRY = {
 } as const
 
 export const FEATURE_ACCESS = {
-	manageSales: {
-		roles: ["producer"],
+	manageOffers: {
+		permissions: ["create offers"],
 	},
 	startNegotiation: {
 		permissions: ["create negotiations"],
@@ -55,9 +55,12 @@ export function hasPermission(user: UserDTO | null, ...permissions: string[]): b
 }
 
 export function canAccessFeature(user: UserDTO | null, feature: Feature): boolean {
-	const rule = FEATURE_ACCESS[feature]
-	const roles = "roles" in rule ? rule.roles : []
-	const permissions = "permissions" in rule ? rule.permissions : []
+	const rule: {
+		readonly roles?: readonly string[]
+		readonly permissions?: readonly string[]
+	} = FEATURE_ACCESS[feature]
+	const roles = rule.roles ?? []
+	const permissions = rule.permissions ?? []
 
 	return (
 		(roles.length > 0 && hasRole(user, ...roles)) ||
