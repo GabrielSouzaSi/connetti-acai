@@ -211,8 +211,7 @@ export default function MyOffersScreen() {
 		try {
 			setLoading(true)
 
-			// const response = await server.get("/my/offers")
-			const response = await server.get("https://fastify-auth-api.onrender.com/my/offers")
+			const response = await server.get("/my/offers")
 
 			const apiOffers = response.data?.data?.data ?? []
 			setOffers(apiOffers)
