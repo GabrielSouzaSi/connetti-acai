@@ -45,7 +45,7 @@ export function AuthContextProvider({ children }: AuthContextProviderProps) {
 				? identifier.trim().toLowerCase()
 				: identifier.replace(/\D/g, "")
 
-			const { data } = await server.post("/login/acai", {
+			const { data } = await server.post("/login", {
 				identifier: normalizedIdentifier,
 				password,
 			})
