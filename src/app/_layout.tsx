@@ -39,7 +39,7 @@ function RootLayoutNav() {
 			<Stack screenOptions={{ headerShown: false }}>
 				<Stack.Protected guard={!isLoggedIn}>
 					<Stack.Screen name="index" />
-					<Stack.Screen name="auth" />
+					<Stack.Screen name="auth/register" />
 				</Stack.Protected>
 
 				<Stack.Protected guard={isLoggedIn}>
