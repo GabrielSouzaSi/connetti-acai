@@ -1,4 +1,5 @@
 import { Button } from "@/components/Button"
+import { API_URL } from "@/config/env"
 import { Field } from "@/components/input"
 import axios from "axios"
 import { router } from "expo-router"
@@ -8,10 +9,7 @@ import {
 	ChevronDown,
 	MapIcon,
 	MapPin,
-	Mars,
 	Search,
-	UserRoundSearch,
-	Venus,
 	X,
 } from "lucide-react-native"
 import { useEffect, useMemo, useState } from "react"
@@ -27,9 +25,6 @@ import {
 	Text,
 	View,
 } from "react-native"
-
-type Gender = "masculino" | "feminino" | "outro" | "prefiro_nao_informar"
-type ProfileType = "produtor" | "comprador"
 
 type ApiError = {
 	message?: string
@@ -66,9 +61,37 @@ type LocalitiesResponse = {
 	data: Locality[]
 }
 
+type RegistrationOption = {
+	id: number
+	value?: string
+	name?: string
+	label: string
+	description?: string | null
+}
+
+type RegistrationOptionsResponse = {
+	message: string
+	data: RegistrationOption[]
+}
+
+type Property = {
+	id: number
+	name: string
+	address: string | null
+	municipality_id: number
+	municipality: Municipality
+	latitude: number | null
+	longitude: number | null
+}
+
+type PropertiesResponse = {
+	message: string
+	data: Property[]
+}
+
 // Instância isolada: não herda o Authorization global configurado no AuthContext.
 const authApi = axios.create({
-	baseURL: "https://fastify-auth-api.onrender.com",
+	baseURL: API_URL,
 	timeout: 180000,
 	headers: {
 		"Content-Type": "application/json",
@@ -81,18 +104,16 @@ authApi.interceptors.request.use((config) => {
 	return config
 })
 
-const MOCK_LOCATION = {
-	latitude: -1.7218,
-	longitude: -48.8788,
-	id_device: "device-token-ou-identificador",
-}
-
 export default function Register() {
 	const [name, setName] = useState("")
 	const [email, setEmail] = useState("")
 	const [phone, setPhone] = useState("")
-	const [gender, setGender] = useState<Gender | null>(null)
-	const [profileType, setProfileType] = useState<ProfileType | null>(null)
+	const [genders, setGenders] = useState<RegistrationOption[]>([])
+	const [selectedGender, setSelectedGender] = useState<RegistrationOption | null>(null)
+	const [roles, setRoles] = useState<RegistrationOption[]>([])
+	const [selectedRole, setSelectedRole] = useState<RegistrationOption | null>(null)
+	const [isLoadingOptions, setIsLoadingOptions] = useState(false)
+	const [optionsError, setOptionsError] = useState("")
 	const [password, setPassword] = useState("")
 	const [passwordConfirmation, setPasswordConfirmation] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
@@ -108,6 +129,13 @@ export default function Register() {
 	const [isLoadingLocalities, setIsLoadingLocalities] = useState(false)
 	const [localitiesError, setLocalitiesError] = useState("")
 	const [localitySearch, setLocalitySearch] = useState("")
+	const [properties, setProperties] = useState<Property[]>([])
+	const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
+	const [isPropertyModalVisible, setIsPropertyModalVisible] = useState(false)
+	const [isLoadingProperties, setIsLoadingProperties] = useState(false)
+	const [propertiesError, setPropertiesError] = useState("")
+	const [propertySearch, setPropertySearch] = useState("")
+	const [productionArea, setProductionArea] = useState("")
 
 	const filteredMunicipalities = useMemo(() => {
 		const search = municipalitySearch.trim().toLocaleLowerCase("pt-BR")
@@ -131,6 +159,17 @@ export default function Register() {
 			return belongsToMunicipality && matchesSearch
 		})
 	}, [localities, localitySearch, selectedMunicipality])
+
+	const filteredProperties = useMemo(() => {
+		if (!selectedMunicipality) return []
+		const search = propertySearch.trim().toLocaleLowerCase("pt-BR")
+
+		return properties.filter(
+			(property) =>
+				property.municipality_id === selectedMunicipality.id &&
+				(!search || property.name.toLocaleLowerCase("pt-BR").includes(search)),
+		)
+	}, [properties, propertySearch, selectedMunicipality])
 
 	async function loadMunicipalities() {
 		setIsLoadingMunicipalities(true)
@@ -162,9 +201,51 @@ export default function Register() {
 		}
 	}
 
+	async function loadRegistrationOptions() {
+		setIsLoadingOptions(true)
+		setOptionsError("")
+		try {
+			const [gendersResponse, rolesResponse] = await Promise.all([
+				authApi.get<RegistrationOptionsResponse>("/genders"),
+				authApi.get<RegistrationOptionsResponse>("/roles"),
+			])
+			setGenders(
+				gendersResponse.data.data.filter((gender) =>
+					["female", "male", "other", "not_informed"].includes(gender.value ?? ""),
+				),
+			)
+			setRoles(
+				rolesResponse.data.data.filter((role) =>
+					["producer", "buyer"].includes(role.name ?? ""),
+				),
+			)
+		} catch (error) {
+			console.error("Falha ao carregar gêneros e perfis:", error)
+			setOptionsError("Não foi possível carregar gêneros e perfis.")
+		} finally {
+			setIsLoadingOptions(false)
+		}
+	}
+
+	async function loadProperties() {
+		setIsLoadingProperties(true)
+		setPropertiesError("")
+		try {
+			const { data } = await authApi.get<PropertiesResponse>("/properties")
+			setProperties(data.data)
+		} catch (error) {
+			console.error("Falha ao carregar propriedades:", error)
+			setPropertiesError("Não foi possível carregar as propriedades.")
+		} finally {
+			setIsLoadingProperties(false)
+		}
+	}
+
 	useEffect(() => {
 		void loadMunicipalities()
 		void loadLocalities()
+		void loadRegistrationOptions()
+		void loadProperties()
 	}, [])
 
 	function optionClassName(selected: boolean) {
@@ -180,16 +261,17 @@ export default function Register() {
 
 		if (
 			!normalizedName ||
-			!normalizedEmail ||
-			!normalizedPhone ||
-			!gender ||
-			!profileType ||
+			(!normalizedEmail && !normalizedPhone) ||
+			!selectedGender?.value ||
+			!selectedRole ||
 			!selectedMunicipality ||
-			!selectedLocality ||
 			!password ||
 			!passwordConfirmation
 		) {
-			Alert.alert("Atenção", "Preencha todos os campos para continuar.")
+			Alert.alert(
+				"Atenção",
+				"Preencha os campos obrigatórios e informe um e-mail ou telefone.",
+			)
 			return
 		}
 
@@ -203,21 +285,45 @@ export default function Register() {
 			return
 		}
 
+		const normalizedProductionArea = productionArea.trim().replace(",", ".")
+		const productionAreaValue = normalizedProductionArea
+			? Number(normalizedProductionArea)
+			: undefined
+		if (
+			productionAreaValue !== undefined &&
+			(!Number.isFinite(productionAreaValue) || productionAreaValue <= 0)
+		) {
+			Alert.alert("Área inválida", "Informe uma área de produção maior que zero.")
+			return
+		}
+
 		setIsSubmitting(true)
 		Keyboard.dismiss()
 
 		try {
 			const payload = {
 				name: normalizedName,
-				email: normalizedEmail,
-				phone: normalizedPhone,
-				gender,
-				profile_type: profileType,
+				...(normalizedEmail ? { email: normalizedEmail } : {}),
+				...(normalizedPhone ? { phone: normalizedPhone } : {}),
+				gender: selectedGender.value,
+				role_ids: [selectedRole.id],
 				municipality_id: selectedMunicipality.id,
-				community: selectedLocality.name,
-				latitude: MOCK_LOCATION.latitude,
-				longitude: MOCK_LOCATION.longitude,
-				id_device: MOCK_LOCATION.id_device,
+				...(selectedLocality ? { locality_id: selectedLocality.id } : {}),
+				...(selectedProperty
+					? {
+							property_id: selectedProperty.id,
+							property_name: selectedProperty.name,
+							...(selectedProperty.latitude !== null
+								? { latitude: selectedProperty.latitude }
+								: {}),
+							...(selectedProperty.longitude !== null
+								? { longitude: selectedProperty.longitude }
+								: {}),
+						}
+					: {}),
+				...(productionAreaValue !== undefined
+					? { production_area_hectares: productionAreaValue }
+					: {}),
 				password,
 				password_confirmation: passwordConfirmation,
 			}
@@ -290,7 +396,7 @@ export default function Register() {
 				/>
 				<Field
 					className="border border-gray-300 rounded-xl"
-					placeholder="E-mail"
+					placeholder="E-mail (opcional se informar telefone)"
 					value={email}
 					onChangeText={setEmail}
 					keyboardType="email-address"
@@ -298,7 +404,7 @@ export default function Register() {
 				/>
 				<Field
 					className="border border-gray-300 rounded-xl"
-					placeholder="Telefone / WhatsApp"
+					placeholder="Telefone / WhatsApp (opcional se informar e-mail)"
 					value={phone}
 					onChangeText={setPhone}
 					keyboardType="phone-pad"
@@ -306,54 +412,53 @@ export default function Register() {
 				/>
 
 				<Text className="text-lg font-bold">Gênero</Text>
-				<View className="flex-row gap-2">
-					<Button
-						onPress={() => setGender("masculino")}
-						className={`${optionClassName(gender === "masculino")} flex-row gap-2`}
-					>
-						<Button.Icon Icon={Mars} size={20} />
-						<Button.TextButton className="text-base font-medium" title="Masculino" />
-					</Button>
-					<Button
-						onPress={() => setGender("feminino")}
-						className={`${optionClassName(gender === "feminino")} flex-row gap-2`}
-					>
-						<Button.Icon Icon={Venus} size={20} />
-						<Button.TextButton className="text-base font-medium" title="Feminino" />
-					</Button>
-					<Button
-						onPress={() => setGender("outro")}
-						className={`${optionClassName(gender === "outro")} flex-row gap-2`}
-					>
-						<Button.Icon Icon={UserRoundSearch} size={20} />
-						<Button.TextButton className="text-base font-medium" title="Outro" />
-					</Button>
+				<View className="flex-row flex-wrap gap-2">
+					{genders.map((gender) => {
+						const selected = selectedGender?.id === gender.id
+						return (
+							<Pressable
+								key={gender.id}
+								onPress={() => setSelectedGender(gender)}
+								className={optionClassName(selected)}
+							>
+								<Text className={selected ? "text-white font-medium" : "font-medium"}>
+									{gender.label}
+								</Text>
+							</Pressable>
+						)
+					})}
 				</View>
-				<Button
-					onPress={() => setGender("prefiro_nao_informar")}
-					className={optionClassName(gender === "prefiro_nao_informar")}
-				>
-					<Button.TextButton
-						className="text-base font-medium"
-						title="Prefiro não informar"
-					/>
-				</Button>
 
 				<Text className="text-lg font-bold">Tipo de perfil</Text>
-				<View className="flex-row gap-2">
-					<Button
-						onPress={() => setProfileType("produtor")}
-						className={optionClassName(profileType === "produtor")}
-					>
-						<Button.TextButton className="text-base font-medium" title="Produtor" />
-					</Button>
-					<Button
-						onPress={() => setProfileType("comprador")}
-						className={optionClassName(profileType === "comprador")}
-					>
-						<Button.TextButton className="text-base font-medium" title="Comprador" />
-					</Button>
+				<View className="flex-row flex-wrap gap-2">
+					{roles.map((role) => {
+						const selected = selectedRole?.id === role.id
+						return (
+							<Pressable
+								key={role.id}
+								onPress={() => setSelectedRole(role)}
+								className={optionClassName(selected)}
+							>
+								<Text className={selected ? "text-white font-medium" : "font-medium"}>
+									{role.name === "producer"
+										? "Produtor"
+										: role.name === "buyer"
+											? "Comprador"
+											: role.label}
+								</Text>
+							</Pressable>
+						)
+					})}
 				</View>
+				{isLoadingOptions && <ActivityIndicator color="#512B76" />}
+				{optionsError && (
+					<View className="flex-row items-center justify-between">
+						<Text className="flex-1 text-sm text-red-500">{optionsError}</Text>
+						<Pressable onPress={loadRegistrationOptions} className="px-3 py-2">
+							<Text className="font-semibold text-primary">Tentar novamente</Text>
+						</Pressable>
+					</View>
+				)}
 
 				<Field
 					className="border border-gray-300 rounded-xl"
@@ -421,7 +526,7 @@ export default function Register() {
 							? "Selecione primeiro o município"
 							: isLoadingLocalities
 								? "Carregando comunidades..."
-								: selectedLocality?.name || "Selecione a comunidade"}
+								: selectedLocality?.name || "Selecione a comunidade (opcional)"}
 					</Text>
 					{isLoadingLocalities ? (
 						<ActivityIndicator size="small" color="#512B76" />
@@ -437,6 +542,48 @@ export default function Register() {
 						</Pressable>
 					</View>
 				)}
+
+				<Text className="text-lg font-bold">Produção (opcional)</Text>
+				<Pressable
+					onPress={() => setIsPropertyModalVisible(true)}
+					disabled={!selectedMunicipality || isLoadingProperties}
+					className={`flex-row items-center border border-gray-300 p-3 rounded-xl gap-4 ${
+						!selectedMunicipality ? "opacity-50" : ""
+					}`}
+				>
+					<MapPin size={20} />
+					<Text
+						className={`flex-1 text-base font-medium ${
+							selectedProperty ? "text-gray-900" : "text-gray-500"
+						}`}
+					>
+						{!selectedMunicipality
+							? "Selecione primeiro o município"
+							: isLoadingProperties
+								? "Carregando propriedades..."
+								: selectedProperty?.name || "Selecione a propriedade (opcional)"}
+					</Text>
+					{isLoadingProperties ? (
+						<ActivityIndicator size="small" color="#512B76" />
+					) : (
+						<ChevronDown size={20} />
+					)}
+				</Pressable>
+				{propertiesError && (
+					<View className="flex-row items-center justify-between">
+						<Text className="flex-1 text-sm text-red-500">{propertiesError}</Text>
+						<Pressable onPress={loadProperties} className="px-3 py-2">
+							<Text className="font-semibold text-primary">Tentar novamente</Text>
+						</Pressable>
+					</View>
+				)}
+				<Field
+					className="border border-gray-300 rounded-xl"
+					placeholder="Área de produção em hectares (opcional)"
+					value={productionArea}
+					onChangeText={setProductionArea}
+					keyboardType="decimal-pad"
+				/>
 
 				<Button
 					onPress={handleRegister}
@@ -509,8 +656,9 @@ export default function Register() {
 								return (
 									<Pressable
 										onPress={() => {
-											if (selectedMunicipality?.id !== item.id) {
-												setSelectedLocality(null)
+										if (selectedMunicipality?.id !== item.id) {
+											setSelectedLocality(null)
+											setSelectedProperty(null)
 											}
 											setSelectedMunicipality(item)
 											setMunicipalitySearch("")
@@ -613,6 +761,85 @@ export default function Register() {
 												<Text className="text-sm text-gray-500">
 													{item.address}
 												</Text>
+											)}
+										</View>
+										{isSelected && <Check size={20} color="#512B76" />}
+									</Pressable>
+								)
+							}}
+						/>
+					</View>
+				</View>
+			</Modal>
+
+			<Modal
+				visible={isPropertyModalVisible}
+				transparent
+				animationType="slide"
+				onRequestClose={() => setIsPropertyModalVisible(false)}
+			>
+				<View className="flex-1 justify-end bg-black/40">
+					<View className="max-h-[80%] rounded-t-3xl bg-white px-4 pb-6 pt-4">
+						<View className="mb-4 flex-row items-center justify-between">
+							<View className="flex-1 pr-4">
+								<Text className="text-xl font-bold text-gray-900">
+									Selecione a propriedade
+								</Text>
+								<Text className="text-sm text-gray-500">
+									{selectedMunicipality
+										? `${selectedMunicipality.name} - ${selectedMunicipality.state}`
+										: "Município não selecionado"}
+								</Text>
+							</View>
+							<Pressable
+								onPress={() => setIsPropertyModalVisible(false)}
+								className="rounded-full bg-gray-100 p-2"
+							>
+								<X size={22} color="#374151" />
+							</Pressable>
+						</View>
+
+						<View className="mb-3 flex-row items-center gap-3 rounded-xl border border-gray-300 px-3">
+							<Search size={20} color="#6B7280" />
+							<Field
+								className="flex-1 border-0 px-0"
+								placeholder="Buscar propriedade"
+								value={propertySearch}
+								onChangeText={setPropertySearch}
+								autoCapitalize="words"
+							/>
+						</View>
+
+						<FlatList
+							data={filteredProperties}
+							keyExtractor={(item) => String(item.id)}
+							keyboardShouldPersistTaps="handled"
+							showsVerticalScrollIndicator={false}
+							ListEmptyComponent={
+								<Text className="py-8 text-center text-gray-500">
+									Nenhuma propriedade encontrada para este município.
+								</Text>
+							}
+							renderItem={({ item }) => {
+								const isSelected = selectedProperty?.id === item.id
+								return (
+									<Pressable
+										onPress={() => {
+											setSelectedProperty(item)
+											setPropertySearch("")
+											setIsPropertyModalVisible(false)
+										}}
+										className={`mb-2 flex-row items-center rounded-xl border p-4 ${
+											isSelected
+												? "border-primary bg-primaryLight"
+												: "border-gray-200 bg-white"
+										}`}
+									>
+										<MapPin size={20} color="#512B76" />
+										<View className="ml-3 flex-1">
+											<Text className="font-semibold text-gray-900">{item.name}</Text>
+											{item.address && (
+												<Text className="text-sm text-gray-500">{item.address}</Text>
 											)}
 										</View>
 										{isSelected && <Check size={20} color="#512B76" />}
