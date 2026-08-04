@@ -8,7 +8,7 @@ export default function PagesLayout() {
 		<Stack screenOptions={{ headerShown: false }}>
 			<Stack.Screen name="index" />
 
-			<Stack.Protected guard={canAccess("manageSales")}>
+			<Stack.Protected guard={canAccess("manageOffers")}>
 				<Stack.Screen name="createSale" />
 				<Stack.Screen name="myOffers" />
 			</Stack.Protected>
