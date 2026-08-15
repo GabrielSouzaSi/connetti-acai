@@ -33,10 +33,11 @@
 		},
 		"plugins": [
 			"expo-router",
+			"expo-notifications",
 			[
 				"expo-location",
 				{
-					"locationWhenInUsePermission": "Permita que o Connetti Açaí use sua localização para publicar ofertas próximas aos compradores."
+					"locationWhenInUsePermission": "Permita que o Connetti Açaí use sua localização no cadastro e para publicar ofertas próximas aos compradores."
 				}
 			]
 		],

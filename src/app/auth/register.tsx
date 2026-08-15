@@ -2,20 +2,22 @@ import { Button } from "@/components/Button"
 import { API_URL } from "@/config/env"
 import { Field } from "@/components/input"
 import axios from "axios"
+import * as Location from "expo-location"
 import { router } from "expo-router"
 import {
+	ArrowLeft,
 	ArrowRight,
 	Check,
 	ChevronDown,
+	LocateFixed,
 	MapIcon,
 	MapPin,
 	Search,
 	X,
 } from "lucide-react-native"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
 	ActivityIndicator,
-	Alert,
 	FlatList,
 	Image,
 	Keyboard,
@@ -25,6 +27,7 @@ import {
 	Text,
 	View,
 } from "react-native"
+import Toast from "react-native-toast-message"
 
 type ApiError = {
 	message?: string
@@ -89,6 +92,11 @@ type PropertiesResponse = {
 	data: Property[]
 }
 
+type Coordinates = {
+	latitude: number
+	longitude: number
+}
+
 // Instância isolada: não herda o Authorization global configurado no AuthContext.
 const authApi = axios.create({
 	baseURL: API_URL,
@@ -105,6 +113,8 @@ authApi.interceptors.request.use((config) => {
 })
 
 export default function Register() {
+	const scrollViewRef = useRef<ScrollView>(null)
+	const [step, setStep] = useState<1 | 2 | 3>(1)
 	const [name, setName] = useState("")
 	const [email, setEmail] = useState("")
 	const [phone, setPhone] = useState("")
@@ -136,6 +146,8 @@ export default function Register() {
 	const [propertiesError, setPropertiesError] = useState("")
 	const [propertySearch, setPropertySearch] = useState("")
 	const [productionArea, setProductionArea] = useState("")
+	const [coordinates, setCoordinates] = useState<Coordinates | null>(null)
+	const [isLoadingLocation, setIsLoadingLocation] = useState(false)
 
 	const filteredMunicipalities = useMemo(() => {
 		const search = municipalitySearch.trim().toLocaleLowerCase("pt-BR")
@@ -210,9 +222,11 @@ export default function Register() {
 				authApi.get<RegistrationOptionsResponse>("/roles"),
 			])
 			setGenders(
-				gendersResponse.data.data.filter((gender) =>
-					["female", "male", "other", "not_informed"].includes(gender.value ?? ""),
-				),
+				gendersResponse.data.data
+					.filter((gender) =>
+						["female", "male", "other", "not_informed"].includes(gender.value ?? ""),
+					)
+					.sort((firstGender, secondGender) => firstGender.id - secondGender.id),
 			)
 			setRoles(
 				rolesResponse.data.data.filter((role) =>
@@ -254,6 +268,124 @@ export default function Register() {
 		}`
 	}
 
+	function handleSelectRole(role: RegistrationOption) {
+		setSelectedRole(role)
+
+		if (role.name === "buyer") {
+			setSelectedProperty(null)
+			setProductionArea("")
+			setIsPropertyModalVisible(false)
+		}
+	}
+
+	async function captureCurrentLocation() {
+		setIsLoadingLocation(true)
+
+		try {
+			const servicesEnabled = await Location.hasServicesEnabledAsync()
+			if (!servicesEnabled) {
+				Toast.show({
+					type: "info",
+					text1: "Localização desativada",
+					text2: "Ative a localização do aparelho e tente novamente.",
+				})
+				return
+			}
+
+			const permission = await Location.requestForegroundPermissionsAsync()
+			if (permission.status !== Location.PermissionStatus.GRANTED) {
+				Toast.show({
+					type: "info",
+					text1: "Permissão necessária",
+					text2: "Permita o acesso à localização para concluir o cadastro.",
+				})
+				return
+			}
+
+			const currentLocation = await Location.getCurrentPositionAsync({
+				accuracy: Location.Accuracy.High,
+			})
+
+			setCoordinates({
+				latitude: currentLocation.coords.latitude,
+				longitude: currentLocation.coords.longitude,
+			})
+			Toast.show({
+				type: "success",
+				text1: "Localização obtida",
+				text2: "As coordenadas foram registradas.",
+			})
+		} catch (error) {
+			console.error("Falha ao obter localização:", error)
+			Toast.show({
+				type: "error",
+				text1: "Erro de localização",
+				text2: "Não foi possível obter as coordenadas. Tente novamente.",
+			})
+		} finally {
+			setIsLoadingLocation(false)
+		}
+	}
+
+	function changeStep(nextStep: 1 | 2 | 3) {
+		Keyboard.dismiss()
+		setStep(nextStep)
+		requestAnimationFrame(() => scrollViewRef.current?.scrollTo({ y: 0, animated: true }))
+	}
+
+	function handleNextStep() {
+		if (step === 1) {
+			const normalizedName = name.trim()
+			const normalizedEmail = email.trim()
+			const normalizedPhone = phone.replace(/\D/g, "")
+
+			if (
+				!normalizedName ||
+				(!normalizedEmail && !normalizedPhone) ||
+				!selectedGender?.value
+			) {
+				Toast.show({
+					type: "info",
+					text1: "Dados pessoais incompletos",
+					text2: "Informe nome, gênero e pelo menos e-mail ou telefone.",
+				})
+				return
+			}
+
+			changeStep(2)
+			return
+		}
+
+		if (!selectedRole || !password || !passwordConfirmation) {
+			Toast.show({
+				type: "info",
+				text1: "Perfil incompleto",
+				text2: "Selecione o perfil e preencha a senha e sua confirmação.",
+			})
+			return
+		}
+
+		if (password.length < 8) {
+			Toast.show({
+				type: "info",
+				text1: "Senha inválida",
+				text2: "A senha deve ter pelo menos 8 caracteres.",
+			})
+			return
+		}
+
+		if (password !== passwordConfirmation) {
+			Toast.show({
+				type: "info",
+				text1: "Senhas diferentes",
+				text2: "As senhas não coincidem.",
+			})
+			return
+		}
+
+		changeStep(3)
+	}
+
 	async function handleRegister() {
 		const normalizedName = name.trim()
 		const normalizedEmail = email.trim().toLowerCase()
@@ -268,32 +400,54 @@ export default function Register() {
 			!password ||
 			!passwordConfirmation
 		) {
-			Alert.alert(
-				"Atenção",
-				"Preencha os campos obrigatórios e informe um e-mail ou telefone.",
-			)
+			Toast.show({
+				type: "info",
+				text1: "Atenção",
+				text2: "Preencha os campos obrigatórios e informe um e-mail ou telefone.",
+			})
+			return
+		}
+
+		if (!coordinates) {
+			Toast.show({
+				type: "info",
+				text1: "Localização necessária",
+				text2: "Use sua localização atual antes de concluir o cadastro.",
+			})
 			return
 		}
 
 		if (password.length < 8) {
-			Alert.alert("Senha inválida", "A senha deve ter pelo menos 8 caracteres.")
+			Toast.show({
+				type: "info",
+				text1: "Senha inválida",
+				text2: "A senha deve ter pelo menos 8 caracteres.",
+			})
 			return
 		}
 
 		if (password !== passwordConfirmation) {
-			Alert.alert("Senhas diferentes", "As senhas não coincidem.")
+			Toast.show({
+				type: "info",
+				text1: "Senhas diferentes",
+				text2: "As senhas não coincidem.",
+			})
 			return
 		}
 
+		const isProducer = selectedRole.name === "producer"
 		const normalizedProductionArea = productionArea.trim().replace(",", ".")
-		const productionAreaValue = normalizedProductionArea
-			? Number(normalizedProductionArea)
-			: undefined
+		const productionAreaValue =
+			isProducer && normalizedProductionArea ? Number(normalizedProductionArea) : undefined
 		if (
 			productionAreaValue !== undefined &&
 			(!Number.isFinite(productionAreaValue) || productionAreaValue <= 0)
 		) {
-			Alert.alert("Área inválida", "Informe uma área de produção maior que zero.")
+			Toast.show({
+				type: "info",
+				text1: "Área inválida",
+				text2: "Informe uma área de produção maior que zero.",
+			})
 			return
 		}
 
@@ -308,17 +462,13 @@ export default function Register() {
 				gender: selectedGender.value,
 				role_ids: [selectedRole.id],
 				municipality_id: selectedMunicipality.id,
+				latitude: coordinates.latitude,
+				longitude: coordinates.longitude,
 				...(selectedLocality ? { locality_id: selectedLocality.id } : {}),
-				...(selectedProperty
+				...(isProducer && selectedProperty
 					? {
 							property_id: selectedProperty.id,
 							property_name: selectedProperty.name,
-							...(selectedProperty.latitude !== null
-								? { latitude: selectedProperty.latitude }
-								: {}),
-							...(selectedProperty.longitude !== null
-								? { longitude: selectedProperty.longitude }
-								: {}),
 						}
 					: {}),
 				...(productionAreaValue !== undefined
@@ -331,13 +481,20 @@ export default function Register() {
 
 			await authApi.post("/register", payload)
 
-			Alert.alert("Cadastro realizado", "Sua conta foi criada com sucesso.", [
-				{ text: "Entrar", onPress: () => router.replace("/") },
-			])
+			Toast.show({
+				type: "success",
+				text1: "Cadastro realizado",
+				text2: "Sua conta foi criada com sucesso.",
+			})
+			router.replace("/")
 		} catch (error) {
 			if (!axios.isAxiosError<ApiError>(error)) {
 				console.error("Erro inesperado no cadastro:", error)
-				Alert.alert("Erro no cadastro", "Ocorreu um erro inesperado. Tente novamente.")
+				Toast.show({
+					type: "error",
+					text1: "Erro no cadastro",
+					text2: "Ocorreu um erro inesperado. Tente novamente.",
+				})
 				return
 			}
 
@@ -362,7 +519,7 @@ export default function Register() {
 					responseData?.error ||
 					`A API recusou o cadastro (HTTP ${error.response.status}).`
 
-			Alert.alert("Erro no cadastro", message)
+			Toast.show({ type: "error", text1: "Erro no cadastro", text2: message })
 		} finally {
 			setIsSubmitting(false)
 		}
@@ -370,6 +527,7 @@ export default function Register() {
 
 	return (
 		<ScrollView
+			ref={scrollViewRef}
 			showsVerticalScrollIndicator={false}
 			keyboardShouldPersistTaps="handled"
 			contentContainerStyle={{ paddingBottom: 16 }}
@@ -385,73 +543,117 @@ export default function Register() {
 				</View>
 
 				<Text className="text-2xl font-bold text-primary">Cadastro rápido</Text>
-				<Text className="text-base font-medium">Crie sua conta em poucos passos</Text>
-
-				<Field
-					className="border border-gray-300 rounded-xl"
-					placeholder="Nome completo"
-					value={name}
-					onChangeText={setName}
-					autoCapitalize="words"
-				/>
-				<Field
-					className="border border-gray-300 rounded-xl"
-					placeholder="E-mail (opcional se informar telefone)"
-					value={email}
-					onChangeText={setEmail}
-					keyboardType="email-address"
-					autoComplete="email"
-				/>
-				<Field
-					className="border border-gray-300 rounded-xl"
-					placeholder="Telefone / WhatsApp (opcional se informar e-mail)"
-					value={phone}
-					onChangeText={setPhone}
-					keyboardType="phone-pad"
-					autoComplete="tel"
-				/>
-
-				<Text className="text-lg font-bold">Gênero</Text>
-				<View className="flex-row flex-wrap gap-2">
-					{genders.map((gender) => {
-						const selected = selectedGender?.id === gender.id
-						return (
-							<Pressable
-								key={gender.id}
-								onPress={() => setSelectedGender(gender)}
-								className={optionClassName(selected)}
-							>
-								<Text className={selected ? "text-white font-medium" : "font-medium"}>
-									{gender.label}
-								</Text>
-							</Pressable>
-						)
-					})}
+				<Text className="text-base font-medium">
+					Etapa {step} de 3 ·{" "}
+					{step === 1 ? "Dados pessoais" : step === 2 ? "Perfil e acesso" : "Localização"}
+				</Text>
+				<View className="flex-row gap-2 mb-2">
+					{[1, 2, 3].map((item) => (
+						<View
+							key={item}
+							className={`h-2 flex-1 rounded-full ${item <= step ? "bg-secondary" : "bg-gray-200"}`}
+						/>
+					))}
 				</View>
 
-				<Text className="text-lg font-bold">Tipo de perfil</Text>
-				<View className="flex-row flex-wrap gap-2">
-					{roles.map((role) => {
-						const selected = selectedRole?.id === role.id
-						return (
-							<Pressable
-								key={role.id}
-								onPress={() => setSelectedRole(role)}
-								className={optionClassName(selected)}
-							>
-								<Text className={selected ? "text-white font-medium" : "font-medium"}>
-									{role.name === "producer"
-										? "Produtor"
-										: role.name === "buyer"
-											? "Comprador"
-											: role.label}
-								</Text>
-							</Pressable>
-						)
-					})}
-				</View>
-				{isLoadingOptions && <ActivityIndicator color="#512B76" />}
-				{optionsError && (
+				{step === 1 && (
+					<>
+						<Field
+							className="border border-gray-300 rounded-xl"
+							placeholder="Nome completo"
+							value={name}
+							onChangeText={setName}
+							autoCapitalize="words"
+						/>
+						<Field
+							className="border border-gray-300 rounded-xl"
+							placeholder="E-mail (opcional se informar telefone)"
+							value={email}
+							onChangeText={setEmail}
+							keyboardType="email-address"
+							autoComplete="email"
+						/>
+						<Field
+							className="border border-gray-300 rounded-xl"
+							placeholder="Telefone / WhatsApp (opcional se informar e-mail)"
+							value={phone}
+							onChangeText={setPhone}
+							keyboardType="phone-pad"
+							autoComplete="tel"
+						/>
+
+						<Text className="text-lg font-bold">Gênero</Text>
+						<View className="flex-row flex-wrap gap-2">
+							{genders.map((gender) => {
+								const selected = selectedGender?.id === gender.id
+								return (
+									<Pressable
+										key={gender.id}
+										onPress={() => setSelectedGender(gender)}
+										className={optionClassName(selected)}
+									>
+										<Text
+											className={
+												selected ? "text-white font-medium" : "font-medium"
+											}
+										>
+											{gender.label}
+										</Text>
+									</Pressable>
+								)
+							})}
+						</View>
+					</>
+				)}
+
+				{step === 2 && (
+					<>
+						<Text className="text-lg font-bold">Tipo de perfil</Text>
+						<View className="flex-row flex-wrap gap-2">
+							{roles.map((role) => {
+								const selected = selectedRole?.id === role.id
+								return (
+									<Pressable
+										key={role.id}
+										onPress={() => handleSelectRole(role)}
+										className={optionClassName(selected)}
+									>
+										<Text
+											className={
+												selected ? "text-white font-medium" : "font-medium"
+											}
+										>
+											{role.name === "producer"
+												? "Produtor"
+												: role.name === "buyer"
+													? "Comprador"
+													: role.label}
+										</Text>
+									</Pressable>
+								)
+							})}
+						</View>
+						<Field
+							className="border border-gray-300 rounded-xl"
+							placeholder="Senha (mínimo de 8 caracteres)"
+							value={password}
+							onChangeText={setPassword}
+							secureTextEntry
+							autoComplete="new-password"
+						/>
+						<Field
+							className="border border-gray-300 rounded-xl"
+							placeholder="Confirme sua senha"
+							value={passwordConfirmation}
+							onChangeText={setPasswordConfirmation}
+							secureTextEntry
+							autoComplete="new-password"
+						/>
+					</>
+				)}
+
+				{step < 3 && isLoadingOptions && <ActivityIndicator color="#512B76" />}
+				{step < 3 && optionsError && (
 					<View className="flex-row items-center justify-between">
 						<Text className="flex-1 text-sm text-red-500">{optionsError}</Text>
 						<Pressable onPress={loadRegistrationOptions} className="px-3 py-2">
@@ -460,148 +662,195 @@ export default function Register() {
 					</View>
 				)}
 
-				<Field
-					className="border border-gray-300 rounded-xl"
-					placeholder="Senha (mínimo de 8 caracteres)"
-					value={password}
-					onChangeText={setPassword}
-					secureTextEntry
-					autoComplete="new-password"
-				/>
-				<Field
-					className="border border-gray-300 rounded-xl"
-					placeholder="Confirme sua senha"
-					value={passwordConfirmation}
-					onChangeText={setPasswordConfirmation}
-					secureTextEntry
-					autoComplete="new-password"
-				/>
-
-				<Text className="text-lg font-bold">Localização</Text>
-				<Pressable
-					onPress={() => setIsMunicipalityModalVisible(true)}
-					disabled={isLoadingMunicipalities}
-					className="flex-row items-center border border-gray-300 p-3 rounded-xl gap-4"
-				>
-					<MapPin size={20} />
-					<Text
-						className={`flex-1 text-base font-medium ${
-							selectedMunicipality ? "text-gray-900" : "text-gray-500"
-						}`}
-					>
-						{isLoadingMunicipalities
-							? "Carregando municípios..."
-							: selectedMunicipality
-								? `${selectedMunicipality.name} - ${selectedMunicipality.state}`
-								: "Selecione o município"}
-					</Text>
-					{isLoadingMunicipalities ? (
-						<ActivityIndicator size="small" color="#512B76" />
-					) : (
-						<ChevronDown size={20} />
-					)}
-				</Pressable>
-				{municipalitiesError && (
-					<View className="flex-row items-center justify-between">
-						<Text className="flex-1 text-sm text-red-500">{municipalitiesError}</Text>
-						<Pressable onPress={loadMunicipalities} className="px-3 py-2">
-							<Text className="font-semibold text-primary">Tentar novamente</Text>
+				{step === 3 && (
+					<>
+						<Text className="text-lg font-bold">Localização</Text>
+						<Pressable
+							onPress={() => setIsMunicipalityModalVisible(true)}
+							disabled={isLoadingMunicipalities}
+							className="flex-row items-center border border-gray-300 p-3 rounded-xl gap-4"
+						>
+							<MapPin size={20} />
+							<Text
+								className={`flex-1 text-base font-medium ${
+									selectedMunicipality ? "text-gray-900" : "text-gray-500"
+								}`}
+							>
+								{isLoadingMunicipalities
+									? "Carregando municípios..."
+									: selectedMunicipality
+										? `${selectedMunicipality.name} - ${selectedMunicipality.state}`
+										: "Selecione o município"}
+							</Text>
+							{isLoadingMunicipalities ? (
+								<ActivityIndicator size="small" color="#512B76" />
+							) : (
+								<ChevronDown size={20} />
+							)}
 						</Pressable>
-					</View>
-				)}
-				<Pressable
-					onPress={() => setIsLocalityModalVisible(true)}
-					disabled={!selectedMunicipality || isLoadingLocalities}
-					className={`flex-row items-center border border-gray-300 p-3 rounded-xl gap-4 ${
-						!selectedMunicipality ? "opacity-50" : ""
-					}`}
-				>
-					<MapIcon size={20} />
-					<Text
-						className={`flex-1 text-base font-medium ${
-							selectedLocality ? "text-gray-900" : "text-gray-500"
-						}`}
-					>
-						{!selectedMunicipality
-							? "Selecione primeiro o município"
-							: isLoadingLocalities
-								? "Carregando comunidades..."
-								: selectedLocality?.name || "Selecione a comunidade (opcional)"}
-					</Text>
-					{isLoadingLocalities ? (
-						<ActivityIndicator size="small" color="#512B76" />
-					) : (
-						<ChevronDown size={20} />
-					)}
-				</Pressable>
-				{localitiesError && (
-					<View className="flex-row items-center justify-between">
-						<Text className="flex-1 text-sm text-red-500">{localitiesError}</Text>
-						<Pressable onPress={loadLocalities} className="px-3 py-2">
-							<Text className="font-semibold text-primary">Tentar novamente</Text>
-						</Pressable>
-					</View>
-				)}
-
-				<Text className="text-lg font-bold">Produção (opcional)</Text>
-				<Pressable
-					onPress={() => setIsPropertyModalVisible(true)}
-					disabled={!selectedMunicipality || isLoadingProperties}
-					className={`flex-row items-center border border-gray-300 p-3 rounded-xl gap-4 ${
-						!selectedMunicipality ? "opacity-50" : ""
-					}`}
-				>
-					<MapPin size={20} />
-					<Text
-						className={`flex-1 text-base font-medium ${
-							selectedProperty ? "text-gray-900" : "text-gray-500"
-						}`}
-					>
-						{!selectedMunicipality
-							? "Selecione primeiro o município"
-							: isLoadingProperties
-								? "Carregando propriedades..."
-								: selectedProperty?.name || "Selecione a propriedade (opcional)"}
-					</Text>
-					{isLoadingProperties ? (
-						<ActivityIndicator size="small" color="#512B76" />
-					) : (
-						<ChevronDown size={20} />
-					)}
-				</Pressable>
-				{propertiesError && (
-					<View className="flex-row items-center justify-between">
-						<Text className="flex-1 text-sm text-red-500">{propertiesError}</Text>
-						<Pressable onPress={loadProperties} className="px-3 py-2">
-							<Text className="font-semibold text-primary">Tentar novamente</Text>
-						</Pressable>
-					</View>
-				)}
-				<Field
-					className="border border-gray-300 rounded-xl"
-					placeholder="Área de produção em hectares (opcional)"
-					value={productionArea}
-					onChangeText={setProductionArea}
-					keyboardType="decimal-pad"
-				/>
-
-				<Button
-					onPress={handleRegister}
-					disabled={isSubmitting}
-					className="flex-row bg-secondary items-center p-3 rounded-xl mt-4"
-				>
-					<Button.ViewButton className="flex-1 items-center">
-						{isSubmitting ? (
-							<ActivityIndicator color="white" />
-						) : (
-							<Button.TextButton
-								className="font-semibold text-2xl text-white"
-								title="Cadastrar"
-							/>
+						{municipalitiesError && (
+							<View className="flex-row items-center justify-between">
+								<Text className="flex-1 text-sm text-red-500">
+									{municipalitiesError}
+								</Text>
+								<Pressable onPress={loadMunicipalities} className="px-3 py-2">
+									<Text className="font-semibold text-primary">
+										Tentar novamente
+									</Text>
+								</Pressable>
+							</View>
 						)}
-					</Button.ViewButton>
-					{!isSubmitting && <Button.Icon Icon={ArrowRight} size={20} color="white" />}
-				</Button>
+						<Pressable
+							onPress={() => setIsLocalityModalVisible(true)}
+							disabled={!selectedMunicipality || isLoadingLocalities}
+							className={`flex-row items-center border border-gray-300 p-3 rounded-xl gap-4 ${
+								!selectedMunicipality ? "opacity-50" : ""
+							}`}
+						>
+							<MapIcon size={20} />
+							<Text
+								className={`flex-1 text-base font-medium ${
+									selectedLocality ? "text-gray-900" : "text-gray-500"
+								}`}
+							>
+								{!selectedMunicipality
+									? "Selecione primeiro o município"
+									: isLoadingLocalities
+										? "Carregando comunidades..."
+										: selectedLocality?.name ||
+											"Selecione a comunidade (opcional)"}
+							</Text>
+							{isLoadingLocalities ? (
+								<ActivityIndicator size="small" color="#512B76" />
+							) : (
+								<ChevronDown size={20} />
+							)}
+						</Pressable>
+						{localitiesError && (
+							<View className="flex-row items-center justify-between">
+								<Text className="flex-1 text-sm text-red-500">
+									{localitiesError}
+								</Text>
+								<Pressable onPress={loadLocalities} className="px-3 py-2">
+									<Text className="font-semibold text-primary">
+										Tentar novamente
+									</Text>
+								</Pressable>
+							</View>
+						)}
+
+						<Text className="text-lg font-bold">Coordenadas geográficas</Text>
+						<Pressable
+							onPress={captureCurrentLocation}
+							disabled={isLoadingLocation}
+							className="flex-row items-center border border-primary p-3 rounded-xl gap-3"
+						>
+							{isLoadingLocation ? (
+								<ActivityIndicator size="small" color="#512B76" />
+							) : (
+								<LocateFixed size={20} color="#512B76" />
+							)}
+							<View className="flex-1">
+								<Text className="font-semibold text-primary">
+									{isLoadingLocation
+										? "Obtendo localização..."
+										: coordinates
+											? "Atualizar minha localização"
+											: "Usar minha localização atual"}
+								</Text>
+								<Text className="text-sm text-gray-500">
+									{coordinates
+										? `${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}`
+										: "Obrigatório para concluir o cadastro"}
+								</Text>
+							</View>
+						</Pressable>
+
+						{selectedRole?.name === "producer" && (
+							<>
+								<Text className="text-lg font-bold">Produção (opcional)</Text>
+								<Pressable
+									onPress={() => setIsPropertyModalVisible(true)}
+									disabled={!selectedMunicipality || isLoadingProperties}
+									className={`flex-row items-center border border-gray-300 p-3 rounded-xl gap-4 ${
+										!selectedMunicipality ? "opacity-50" : ""
+									}`}
+								>
+									<MapPin size={20} />
+									<Text
+										className={`flex-1 text-base font-medium ${
+											selectedProperty ? "text-gray-900" : "text-gray-500"
+										}`}
+									>
+										{!selectedMunicipality
+											? "Selecione primeiro o município"
+											: isLoadingProperties
+												? "Carregando propriedades..."
+												: selectedProperty?.name ||
+													"Selecione a propriedade (opcional)"}
+									</Text>
+									{isLoadingProperties ? (
+										<ActivityIndicator size="small" color="#512B76" />
+									) : (
+										<ChevronDown size={20} />
+									)}
+								</Pressable>
+								{propertiesError && (
+									<View className="flex-row items-center justify-between">
+										<Text className="flex-1 text-sm text-red-500">
+											{propertiesError}
+										</Text>
+										<Pressable onPress={loadProperties} className="px-3 py-2">
+											<Text className="font-semibold text-primary">
+												Tentar novamente
+											</Text>
+										</Pressable>
+									</View>
+								)}
+								<Field
+									className="border border-gray-300 rounded-xl"
+									placeholder="Área de produção em hectares (opcional)"
+									value={productionArea}
+									onChangeText={setProductionArea}
+									keyboardType="decimal-pad"
+								/>
+							</>
+						)}
+					</>
+				)}
+
+				<View className="flex-row gap-3 mt-4">
+					{step > 1 && (
+						<Button
+							onPress={() => changeStep(step === 3 ? 2 : 1)}
+							disabled={isSubmitting}
+							className="flex-1 flex-row items-center justify-center gap-2 border border-primary p-3 rounded-xl"
+						>
+							<Button.Icon Icon={ArrowLeft} size={20} color="#512B76" />
+							<Button.TextButton
+								className="font-semibold text-lg text-primary"
+								title="Voltar"
+							/>
+						</Button>
+					)}
+					<Button
+						onPress={step === 3 ? handleRegister : handleNextStep}
+						disabled={isSubmitting}
+						className="flex-1 flex-row bg-secondary items-center p-3 rounded-xl"
+					>
+						<Button.ViewButton className="flex-1 items-center">
+							{isSubmitting ? (
+								<ActivityIndicator color="white" />
+							) : (
+								<Button.TextButton
+									className="font-semibold text-lg text-white"
+									title={step === 3 ? "Cadastrar" : "Continuar"}
+								/>
+							)}
+						</Button.ViewButton>
+						{!isSubmitting && <Button.Icon Icon={ArrowRight} size={20} color="white" />}
+					</Button>
+				</View>
 			</View>
 
 			<Modal
@@ -656,9 +905,9 @@ export default function Register() {
 								return (
 									<Pressable
 										onPress={() => {
-										if (selectedMunicipality?.id !== item.id) {
-											setSelectedLocality(null)
-											setSelectedProperty(null)
+											if (selectedMunicipality?.id !== item.id) {
+												setSelectedLocality(null)
+												setSelectedProperty(null)
 											}
 											setSelectedMunicipality(item)
 											setMunicipalitySearch("")
@@ -837,9 +1086,13 @@ export default function Register() {
 									>
 										<MapPin size={20} color="#512B76" />
 										<View className="ml-3 flex-1">
-											<Text className="font-semibold text-gray-900">{item.name}</Text>
+											<Text className="font-semibold text-gray-900">
+												{item.name}
+											</Text>
 											{item.address && (
-												<Text className="text-sm text-gray-500">{item.address}</Text>
+												<Text className="text-sm text-gray-500">
+													{item.address}
+												</Text>
 											)}
 										</View>
 										{isSelected && <Check size={20} color="#512B76" />}

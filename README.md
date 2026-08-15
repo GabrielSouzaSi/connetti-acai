@@ -13,6 +13,9 @@ O projeto é desenvolvido com React Native e Expo, com uma experiência adaptada
 - Criação e gerenciamento de ofertas de venda e de compra;
 - Negociações entre compradores e produtores;
 - Mensagens e acompanhamento de transações;
+- Histórico de preços por município e período;
+- Localização para publicação e descoberta de ofertas próximas;
+- Notificações locais com abertura direta da tela relacionada;
 - Persistência local da sessão;
 - Navegação protegida para usuários autenticados.
 
@@ -25,9 +28,11 @@ O projeto é desenvolvido com React Native e Expo, com uma experiência adaptada
 - [TypeScript](https://www.typescriptlang.org/);
 - [Axios](https://axios-http.com/);
 - [NativeWind](https://www.nativewind.dev/);
+- [Zustand](https://zustand.docs.pmnd.rs/);
 - [AsyncStorage](https://react-native-async-storage.github.io/async-storage/);
 - [Lucide Icons](https://lucide.dev/);
-- Drizzle ORM e Expo SQLite.
+- Drizzle ORM e Expo SQLite;
+- Expo Location e Expo Notifications.
 
 ## Requisitos
 
@@ -37,7 +42,7 @@ Antes de iniciar, instale:
 - npm;
 - Android Studio para executar no Android;
 - Xcode para executar no iOS, disponível apenas no macOS;
-- Expo Go ou um development build, conforme os recursos utilizados.
+- Expo Go para fluxos básicos ou um development build para testar a integração nativa completa.
 
 ## Instalação
 
@@ -56,15 +61,23 @@ npm install
 
 ## Variáveis de ambiente
 
-Crie um arquivo `.env` na raiz:
+Copie o arquivo de exemplo para `.env.local`:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Depois, informe a URL-base da API:
 
 ```env
 EXPO_PUBLIC_API_URL=https://sua-api.example.com
 ```
 
-Variáveis com o prefixo `EXPO_PUBLIC_` são incluídas no aplicativo cliente. Não armazene tokens, senhas, chaves privadas ou outros segredos nessas variáveis.
+Não inclua uma barra no final da URL. O aplicativo remove barras excedentes e deriva automaticamente o endereço WebSocket, trocando `http` por `ws` e adicionando `/chat`.
 
-> A autenticação atual utiliza a API `https://fastify-auth-api.onrender.com`. Ao centralizar todos os endpoints, prefira configurar a URL-base pelo ambiente.
+A inicialização é interrompida quando `EXPO_PUBLIC_API_URL` não está definida. Variáveis com o prefixo `EXPO_PUBLIC_` são incluídas no aplicativo cliente; não armazene tokens, senhas, chaves privadas ou outros segredos nelas.
+
+Após alterar o arquivo de ambiente, reinicie o servidor de desenvolvimento para garantir que o novo valor seja carregado.
 
 ## Executando o projeto
 
@@ -93,6 +106,10 @@ Para limpar o cache do Metro quando necessário:
 npx expo start --clear
 ```
 
+Os scripts `android` e `ios` usam `expo run`, geram/atualizam os projetos nativos e instalam um development build no dispositivo ou simulador. Depois da primeira compilação, `npm start` pode ser usado para iniciar somente o bundler.
+
+> No Android, notificações push remotas não funcionam no Expo Go a partir do SDK 53. Este projeto agenda notificações locais, mas prefira um development build para validar o comportamento nativo completo.
+
 ## Estrutura principal
 
 ```text
@@ -109,8 +126,10 @@ src/
 ├── dtos/                # Tipos dos dados da API
 ├── hooks/               # Hooks de autenticação e acesso
 ├── server/              # Cliente e configuração HTTP
+├── services/            # Serviços do dispositivo, como notificações
 ├── storage/             # Persistência local do usuário e token
-└── styles/              # Estilos e tema global
+├── styles/              # Estilos e tema global
+└── utils/               # Cálculos e transformações compartilhadas
 ```
 
 ## Autenticação
@@ -169,6 +188,12 @@ Também é recomendado verificar problemas de formatação no diff:
 
 ```bash
 git diff --check
+```
+
+Para conferir se as dependências estão compatíveis com o Expo SDK 54:
+
+```bash
+npx expo install --check
 ```
 
 ## Fluxo de contribuição

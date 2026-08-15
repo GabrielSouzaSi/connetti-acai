@@ -1,3 +1,5 @@
+import { Header } from "@/components/Header"
+import { ConfirmationModal } from "@/components/ConfirmationModal"
 import { server } from "@/server/api"
 import { router } from "expo-router"
 import {
@@ -10,10 +12,12 @@ import {
 	Pencil,
 	Plus,
 	TrendingUp,
+	Trash2,
 	XCircle,
 } from "lucide-react-native"
 import { useEffect, useState } from "react"
 import { ActivityIndicator, FlatList, Image, Pressable, Text, View } from "react-native"
+import Toast from "react-native-toast-message"
 
 export interface MyOffer {
 	id: number
@@ -104,12 +108,44 @@ function getStatusConfig(status: string) {
 	}
 }
 
-function MyOfferCard({ item }: { item: MyOffer }) {
+function MyOfferCard({ item, onCancelled }: { item: MyOffer; onCancelled: () => Promise<void> }) {
+	const [cancelling, setCancelling] = useState(false)
+	const [confirmCancelVisible, setConfirmCancelVisible] = useState(false)
 	const typeLabel = item.type === "sell" ? "Venda" : "Compra"
 	const status = getStatusConfig(item.status)
 	const StatusIcon = status.Icon
+	const canCancel = !["cancelled", "canceled", "expired"].includes(
+		item.status.toLocaleLowerCase("en-US"),
+	)
+
+	async function handleCancel() {
+						const endpoint = `/offers/${item.id}/cancel`
+
+						try {
+							setCancelling(true)
+							console.log("[Oferta] Cancelando oferta", { endpoint, offerId: item.id })
+							await server.patch(endpoint, {})
+							Toast.show({ type: "success", text1: "Oferta cancelada", text2: "A oferta foi cancelada com sucesso." })
+							setConfirmCancelVisible(false)
+							await onCancelled()
+						} catch (error: any) {
+							console.error("[Oferta] Erro ao cancelar oferta", {
+								endpoint,
+								status: error?.response?.status,
+								response: error?.response?.data,
+							})
+							Toast.show({
+								type: "error",
+								text1: "Erro ao cancelar oferta",
+								text2: error?.response?.data?.message ?? "Não foi possível cancelar a oferta. Tente novamente.",
+							})
+						} finally {
+							setCancelling(false)
+						}
+	}
 
 	return (
+		<>
 		<View className="bg-white rounded-2xl p-3 mb-4 shadow-sm border border-gray-100">
 			<View className="flex-row gap-3">
 				<Image source={acaiImage} className="w-28 h-28 rounded-2xl" resizeMode="cover" />
@@ -184,7 +220,7 @@ function MyOfferCard({ item }: { item: MyOffer }) {
 				<Pressable
 					onPress={() =>
 						router.push({
-							pathname: "/pages/createSale",
+							pathname: "/pages/offerDetails",
 							params: { offer: JSON.stringify(item) },
 						})
 					}
@@ -194,12 +230,49 @@ function MyOfferCard({ item }: { item: MyOffer }) {
 					<Text className="text-green-700 font-semibold text-sm">Ver detalhes</Text>
 				</Pressable>
 
-				<Pressable className="flex-1 bg-violet-100 border border-violet-300 py-3 rounded-xl flex-row items-center justify-center gap-2">
+				<Pressable
+					onPress={() =>
+						router.push({
+							pathname: "/pages/createSale",
+							params: { offer: JSON.stringify(item) },
+						})
+					}
+					className="flex-1 bg-violet-100 border border-violet-300 py-3 rounded-xl flex-row items-center justify-center gap-2"
+				>
 					<Pencil size={16} color="#6D28D9" />
 					<Text className="text-violet-700 font-semibold text-sm">Editar</Text>
 				</Pressable>
 			</View>
+
+			{canCancel ? (
+				<Pressable
+					onPress={() => setConfirmCancelVisible(true)}
+					disabled={cancelling}
+					className={`mt-2 border border-red-300 py-3 rounded-xl flex-row items-center justify-center gap-2 ${cancelling ? "bg-red-50 opacity-60" : "bg-white"}`}
+				>
+					{cancelling ? (
+						<ActivityIndicator size="small" color="#DC2626" />
+					) : (
+						<Trash2 size={16} color="#DC2626" />
+					)}
+					<Text className="text-red-600 font-semibold text-sm">
+						{cancelling ? "Cancelando..." : "Cancelar oferta"}
+					</Text>
+				</Pressable>
+			) : null}
 		</View>
+		<ConfirmationModal
+			visible={confirmCancelVisible}
+			title="Cancelar oferta"
+			message="Tem certeza que deseja cancelar esta oferta? Essa ação não poderá ser desfeita."
+			confirmLabel="Cancelar oferta"
+			cancelLabel="Voltar"
+			destructive
+			loading={cancelling}
+			onConfirm={handleCancel}
+			onCancel={() => setConfirmCancelVisible(false)}
+		/>
+		</>
 	)
 }
 
@@ -228,21 +301,12 @@ export default function MyOffersScreen() {
 
 	return (
 		<View className="flex-1 bg-gray-50">
-			<View className="px-5 pt-14 pb-4 bg-white border-b border-gray-100">
-				<View className="flex-row items-center justify-between">
-					<View>
-						<Text className="text-2xl font-bold text-gray-900">Minhas Ofertas</Text>
-						<Text className="text-gray-500 mt-1">Gerencie suas ofertas de açaí</Text>
-					</View>
-
-					<Pressable
-						onPress={() => router.push("/pages/createSale")}
-						className="w-12 h-12 bg-violet-700 rounded-full items-center justify-center"
-					>
-						<Plus size={24} color="#FFFFFF" />
-					</Pressable>
-				</View>
-			</View>
+			<Header
+				title="Minhas ofertas"
+				subtitle="Gerencie suas ofertas de açaí"
+				showBack
+				rightAction={<Pressable onPress={() => router.push("/pages/createSale")} accessibilityRole="button" accessibilityLabel="Criar oferta" className="h-10 w-10 items-center justify-center rounded-full bg-white/20"><Plus size={23} color="#FFFFFF" /></Pressable>}
+			/>
 
 			{loading ? (
 				<View className="flex-1 items-center justify-center">
@@ -255,7 +319,9 @@ export default function MyOffersScreen() {
 					keyExtractor={(item) => String(item.id)}
 					contentContainerClassName="p-5 pb-10"
 					showsVerticalScrollIndicator={false}
-					renderItem={({ item }) => <MyOfferCard item={item} />}
+					renderItem={({ item }) => (
+						<MyOfferCard item={item} onCancelled={loadMyOffers} />
+					)}
 					ListEmptyComponent={
 						<View className="items-center justify-center mt-20 px-6">
 							<Package size={56} color="#9CA3AF" />

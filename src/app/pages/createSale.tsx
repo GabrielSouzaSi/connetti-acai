@@ -1,14 +1,14 @@
+import { Header } from "@/components/Header"
+import { API_URL } from "@/config/env"
 import { useAccess } from "@/hooks/useAccess"
 import { useAuth } from "@/hooks/useAuth"
 import { server } from "@/server/api"
 import axios from "axios"
-import * as Location from "expo-location"
 import { router, useLocalSearchParams } from "expo-router"
-import { ChevronLeft, ChevronRight, Grid3X3, Info, Package, Scale } from "lucide-react-native"
+import { ChevronRight, Grid3X3, Info, Package, Scale } from "lucide-react-native"
 import React, { useEffect, useMemo, useState } from "react"
 import {
 	ActivityIndicator,
-	Alert,
 	Pressable,
 	ScrollView,
 	Text,
@@ -16,6 +16,7 @@ import {
 	TouchableOpacity,
 	View,
 } from "react-native"
+import Toast from "react-native-toast-message"
 
 const COLORS = {
 	primary: "#3B0A5F",
@@ -23,19 +24,10 @@ const COLORS = {
 	background: "#F8F5FA",
 }
 
-const UNIDADES = {
-	kg: {
-		label: "kg",
-		kg: 1,
-	},
-	lata: {
-		label: "Lata",
-		kg: 14,
-	},
-	tela: {
-		label: "Tela",
-		kg: 28,
-	},
+const UNIT_KG: Record<string, number> = {
+	kg: 1,
+	lata: 14,
+	tela: 28,
 }
 
 const formatCurrency = (value: string) => {
@@ -49,62 +41,79 @@ const formatCurrency = (value: string) => {
 	})
 }
 
-const formatLocalDate = (date: Date) => {
-	const year = date.getFullYear()
-	const month = String(date.getMonth() + 1).padStart(2, "0")
-	const day = String(date.getDate()).padStart(2, "0")
-
-	return `${year}-${month}-${day}`
+const centsToReais = (value: string) => {
+	const cents = Number(value || "0")
+	return Number((cents / 100).toFixed(2))
 }
 
-const addDays = (date: Date, days: number) => {
-	const result = new Date(date)
-	result.setDate(result.getDate() + days)
-	return result
+type Product = {
+	id: number
+	name: string
+	description: string | null
+	is_active: boolean
 }
 
-const parseCoordinate = (value: number | string | null | undefined) => {
-	if (value === null || value === undefined || value === "") return null
-
-	const coordinate = Number(value)
-	return Number.isFinite(coordinate) ? coordinate : null
+type ProductsResponse = {
+	message: string
+	data: Product[]
 }
 
-async function getOfferCoordinates(
-	userLatitude: number | string | null | undefined,
-	userLongitude: number | string | null | undefined,
-) {
-	const profileLatitude = parseCoordinate(userLatitude)
-	const profileLongitude = parseCoordinate(userLongitude)
+type OfferOption = {
+	id: number
+	value: string
+	label: string
+	description: string | null
+}
 
-	if (profileLatitude !== null && profileLongitude !== null) {
-		return { latitude: profileLatitude, longitude: profileLongitude }
-	}
+type OfferOptionsResponse = {
+	message: string
+	data: OfferOption[]
+}
 
-	const permission = await Location.requestForegroundPermissionsAsync()
-	if (permission.status !== Location.PermissionStatus.GRANTED) return null
+function findOfferType(options: OfferOption[], isBuyer: boolean) {
+	const aliases = isBuyer
+		? ["buyer", "buy", "comprador"]
+		: ["seller", "sell", "vendedor", "producer", "produtor"]
 
-	const currentLocation = await Location.getCurrentPositionAsync({
-		accuracy: Location.Accuracy.Balanced,
+	return options.find((option) => {
+		const value = option.value.trim().toLocaleLowerCase("pt-BR")
+		const label = option.label.trim().toLocaleLowerCase("pt-BR")
+
+		return aliases.includes(value) || aliases.includes(label)
 	})
-
-	return {
-		latitude: currentLocation.coords.latitude,
-		longitude: currentLocation.coords.longitude,
-	}
 }
 
-function getApiErrorMessage(error: unknown) {
-	if (!axios.isAxiosError(error)) return "Não foi possível criar a oferta. Tente novamente."
+function getApiErrorMessage(
+	error: unknown,
+	fallback = "Não foi possível criar a oferta. Tente novamente.",
+) {
+	if (!axios.isAxiosError(error)) return fallback
 
 	const responseData = error.response?.data as
 		| { message?: string; errors?: Record<string, string[]> }
 		| undefined
-	const fieldMessage = responseData?.errors
-		? Object.values(responseData.errors).flat().find(Boolean)
+	const fieldError = responseData?.errors
+		? Object.entries(responseData.errors).find(([, messages]) => messages.length > 0)
 		: undefined
+	const fieldMessage = fieldError?.[1][0]
+	const message = fieldMessage ?? responseData?.message
 
-	return fieldMessage ?? responseData?.message ?? "Não foi possível criar a oferta."
+	if (message === "validation.integer") {
+		const fieldLabels: Record<string, string> = {
+			user_id: "usuário",
+			type: "tipo da oferta",
+			product_id: "produto",
+			volume: "quantidade",
+			unit: "unidade",
+			original_volume: "quantidade",
+			original_unit: "unidade",
+		}
+		const fieldLabel = fieldLabels[fieldError?.[0] ?? ""] ?? "campo informado"
+
+		return `O valor de ${fieldLabel} deve ser um número inteiro.`
+	}
+
+	return message ?? fallback
 }
 
 export default function NovaOferta() {
@@ -112,18 +121,35 @@ export default function NovaOferta() {
 	const { is } = useAccess()
 	const { user } = useAuth()
 	const [quantidade, setQuantidade] = useState("10")
-	const [unidade, setUnidade] = useState<"kg" | "lata" | "tela">("lata")
 	const [price, setPrice] = useState("0.00")
+	const [products, setProducts] = useState<Product[]>([])
+	const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
+	const [offerUnits, setOfferUnits] = useState<OfferOption[]>([])
+	const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null)
+	const [selectedOfferTypeId, setSelectedOfferTypeId] = useState<number | null>(null)
+	const [productsLoading, setProductsLoading] = useState(true)
+	const [productsError, setProductsError] = useState("")
+	const [showProducts, setShowProducts] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
 	const isBuyOffer = is("buyer")
 	const isSellOffer = is("producer")
 	const offerTypeLabel = isBuyOffer ? "Compra" : "Venda"
-	const validityDays = isBuyOffer ? 5 : 3
-	const today = new Date()
-	const displayedOfferDate = formatLocalDate(today)
-	const displayedExpiresAt = formatLocalDate(addDays(today, validityDays))
+	const offerEndpoint = isBuyOffer ? "/offers/buy" : "/offers/sell"
+	const editingOffer = useMemo(() => {
+		if (!offer) return null
 
-	const corPrincipal = unidade === "tela" ? COLORS.green : COLORS.primary
+		try {
+			return JSON.parse(String(offer)) as Record<string, any>
+		} catch {
+			return null
+		}
+	}, [offer])
+	const editingOfferId = Number(editingOffer?.id)
+	const isEditing = Number.isInteger(editingOfferId) && editingOfferId > 0
+	const selectedProduct = products.find((product) => product.id === selectedProductId)
+	const selectedUnit = offerUnits.find((unit) => unit.id === selectedUnitId)
+
+	const corPrincipal = selectedUnit?.value === "tela" ? COLORS.green : COLORS.primary
 	//console.log(JSON.stringify(user, null, 2))
 
 	const handlePriceChange = (text: string) => {
@@ -137,104 +163,189 @@ export default function NovaOferta() {
 
 	const equivalencia = useMemo(() => {
 		const valor = Number(quantidade.replace(",", ".")) || 0
-		const totalKg = valor * UNIDADES[unidade].kg
+		const totalKg = valor * (UNIT_KG[selectedUnit?.value ?? ""] ?? 1)
 
 		return {
 			kg: totalKg,
 			lata: totalKg / 14,
 			tela: totalKg / 28,
 		}
-	}, [quantidade, unidade])
+	}, [quantidade, selectedUnit?.value])
 
 	function formatarValor(valor: number) {
 		return Number.isInteger(valor) ? String(valor) : valor.toFixed(1).replace(".", ",")
 	}
 
 	useEffect(() => {
-		if (offer) {
+		if (!editingOffer) return
+
+		setQuantidade(
+			String(editingOffer.original_volume ?? editingOffer.volume?.original ?? ""),
+		)
+		setPrice(String(Math.round(Number(editingOffer.price) * 100)))
+		setSelectedProductId(
+			Number(editingOffer.product_id ?? editingOffer.product?.id) || null,
+		)
+	}, [editingOffer])
+
+	useEffect(() => {
+		async function loadOfferOptions() {
 			try {
-				const parsedOffer = JSON.parse(String(offer))
-				setQuantidade(String(parsedOffer.volume.original))
-				setUnidade(parsedOffer.volume.unit)
-				setPrice(String(Math.round(Number(parsedOffer.price) * 100)))
-			} catch {
-				Alert.alert("Oferta inválida", "Não foi possível carregar os dados da oferta.")
+				setProductsLoading(true)
+				setProductsError("")
+				const [productsResponse, unitsResponse, typesResponse] = await Promise.all([
+					server.get<ProductsResponse>("/products"),
+					server.get<OfferOptionsResponse>("/offer_units"),
+					server.get<OfferOptionsResponse>("/offer_types"),
+				])
+				const activeProducts = productsResponse.data.data.filter(
+					(product) => product.is_active,
+				)
+				const units = unitsResponse.data.data
+				const offerTypes = typesResponse.data.data
+				const offerType = findOfferType(offerTypes, isBuyOffer)
+				//console.log("units", unitsResponse.data.data)
+				console.log("[Oferta] Opções carregadas", {
+					profile: isBuyOffer ? "buyer" : "producer",
+					types: offerTypes,
+					units,
+					selectedType: offerType ?? null,
+				})
+
+				setProducts(activeProducts)
+				setOfferUnits(units)
+				setSelectedProductId((current) => current ?? activeProducts[0]?.id ?? null)
+				setSelectedUnitId((current) => {
+					if (current) return current
+
+					const editingUnit = editingOffer?.original_unit ?? editingOffer?.volume?.unit
+					const numericUnitId = Number(editingUnit)
+					if (Number.isInteger(numericUnitId) && numericUnitId > 0) return numericUnitId
+
+					const unitValue = String(editingUnit ?? "").toLocaleLowerCase("pt-BR")
+					return units.find((unit) => unit.value.toLocaleLowerCase("pt-BR") === unitValue)?.id ?? units[0]?.id ?? null
+				})
+				setSelectedOfferTypeId(offerType?.id ?? null)
+			} catch (error) {
+				setProductsError(
+					getApiErrorMessage(error, "Não foi possível carregar as opções da oferta."),
+				)
+			} finally {
+				setProductsLoading(false)
 			}
 		}
-	}, [offer])
+
+		loadOfferOptions()
+	}, [editingOffer, isBuyOffer])
 
 	async function handleCreateOffer() {
-		if (!isSellOffer) {
-			Alert.alert(
-				"Perfil necessário",
-				"A criação de ofertas de venda está disponível apenas para o perfil produtor.",
-			)
+		if (!isSellOffer && !isBuyOffer) {
+			Toast.show({ type: "info", text1: "Perfil necessário", text2: "A criação de ofertas está disponível para produtores e compradores." })
 			return
 		}
 
 		const volume = Number(quantidade.replace(",", "."))
-		const numericPrice = Number(price || "0") / 100
-		const numericPropertyId = Number(user?.property_id) || 1
-		const numericProductionAreaId = Number(user?.locality_id)
+		const numericPrice = centsToReais(price)
 
-		if (!Number.isInteger(numericPropertyId) || numericPropertyId <= 0) {
-			Alert.alert("Perfil incompleto", "A propriedade não foi encontrada no seu perfil.")
+		if (!user?.id) {
+			Toast.show({ type: "error", text1: "Sessão inválida", text2: "Entre novamente para criar uma oferta." })
 			return
 		}
 
-		if (!Number.isInteger(numericProductionAreaId) || numericProductionAreaId <= 0) {
-			Alert.alert("Perfil incompleto", "A área de produção não foi encontrada no seu perfil.")
+		if (!isEditing && !selectedProductId) {
+			Toast.show({ type: "info", text1: "Produto necessário", text2: "Selecione o produto que deseja vender." })
 			return
 		}
 
-		if (!Number.isFinite(volume) || volume <= 0 || numericPrice <= 0) {
-			Alert.alert("Dados incompletos", "Informe quantidade e preço maiores que zero.")
+		if (!selectedUnitId || !selectedUnit || (!isEditing && !selectedOfferTypeId)) {
+			Toast.show({ type: "error", text1: "Opções indisponíveis", text2: "Não foi possível identificar o tipo ou a unidade da oferta." })
 			return
 		}
 
-		if (!user?.municipality_id) {
-			Alert.alert("Perfil incompleto", "O município do produtor é obrigatório.")
+		if (!Number.isInteger(volume) || volume <= 0) {
+			Toast.show({ type: "info", text1: "Quantidade inválida", text2: "Informe uma quantidade inteira maior que zero." })
+			return
+		}
+
+		if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+			Toast.show({ type: "info", text1: "Dados incompletos", text2: "Informe quantidade e preço maiores que zero." })
 			return
 		}
 
 		try {
 			setSubmitting(true)
-			const offerDate = new Date()
-			const expiresAt = addDays(offerDate, validityDays)
-			//console.log("expiresat", expiresAt)
 
-			// const coordinates = await getOfferCoordinates(user.latitude, user.longitude)
+			if (isEditing) {
+				const priceEndpoint = `/offers/${editingOfferId}/price`
+				const volumeEndpoint = `/offers/${editingOfferId}/volume`
+				const pricePayload = { price: numericPrice }
+				const volumePayload = {
+					volume,
+					unit: selectedUnit.value,
+				}
 
-			// if (!coordinates) {
-			// 	Alert.alert(
-			// 		"Localização necessária",
-			// 		"Permita o acesso à localização do aparelho para publicar esta oferta.",
-			// 	)
-			// 	return
-			// }
+				console.log(
+					"[Oferta] Atualizando oferta",
+					JSON.stringify({
+						requests: [
+							{ url: `${API_URL}${priceEndpoint}`, payload: pricePayload },
+							{ url: `${API_URL}${volumeEndpoint}`, payload: volumePayload },
+						],
+					}),
+				)
 
-			const payload = {
-				municipality_id: user?.municipality_id,
-				property_id: numericPropertyId,
-				production_area_id: numericProductionAreaId,
-				locality_id: 1,
-				price: numericPrice,
-				volume,
-				unit: unidade,
-				latitude: -16.729825,
-				longitude: -43.854532,
-				offer_date: formatLocalDate(offerDate),
-				expires_at: formatLocalDate(expiresAt),
+				await server.patch(priceEndpoint, pricePayload)
+				await server.patch(volumeEndpoint, volumePayload)
+			} else {
+				const payload = {
+					user_id: user.id,
+					type: selectedOfferTypeId,
+					product_id: selectedProductId,
+					price: numericPrice,
+					original_volume: volume,
+					original_unit: selectedUnitId,
+				}
+
+				console.log("[Oferta] Enviando requisição", {
+					action: "create",
+					url: `${API_URL}${offerEndpoint}`,
+					endpoint: offerEndpoint,
+					payload,
+				})
+
+				await server.post(offerEndpoint, payload)
 			}
-			console.log("Dados: " + JSON.stringify(payload))
 
-			await server.post("/offers/sell", payload)
-
-			Alert.alert("Oferta criada", "Sua oferta de venda foi publicada com sucesso.", [
-				{ text: "Ver minhas ofertas", onPress: () => router.replace("/pages/myOffers") },
-			])
+			Toast.show({
+				type: "success",
+				text1: isEditing ? "Oferta atualizada" : "Oferta criada",
+				text2: isEditing
+					? "As alterações da oferta foram salvas com sucesso."
+					: `Sua oferta de ${offerTypeLabel.toLowerCase()} foi publicada com sucesso.`,
+			})
+			router.replace("/pages/myOffers")
 		} catch (error) {
-			Alert.alert("Erro ao criar oferta", getApiErrorMessage(error))
+			if (axios.isAxiosError(error)) {
+				console.error("[Oferta] Erro na requisição", {
+					action: isEditing ? "update" : "create",
+					url: error.config?.url,
+					method: error.config?.method,
+					payload: error.config?.data,
+					status: error.response?.status,
+					response: error.response?.data,
+				})
+			}
+
+			Toast.show({
+				type: "error",
+				text1: isEditing ? "Erro ao atualizar oferta" : "Erro ao criar oferta",
+				text2: getApiErrorMessage(
+					error,
+					isEditing
+						? "Não foi possível atualizar a oferta. Tente novamente."
+						: "Não foi possível criar a oferta. Tente novamente.",
+				),
+			})
 		} finally {
 			setSubmitting(false)
 		}
@@ -242,24 +353,12 @@ export default function NovaOferta() {
 
 	return (
 		<View className="flex-1 bg-white">
-			<View
-				className="px-5 pt-14 pb-5 rounded-b-3xl"
-				style={{ backgroundColor: corPrincipal }}
-			>
-				<View className="flex-row items-center justify-between">
-					<TouchableOpacity onPress={() => router.back()} className="">
-						<ChevronLeft color="#fff" size={26} />
-					</TouchableOpacity>
-
-					<Text className="text-white font-semibold text-lg">
-						Nova Oferta de {offerTypeLabel}
-					</Text>
-
-					<TouchableOpacity>
-						<Info color="#fff" size={22} />
-					</TouchableOpacity>
-				</View>
-			</View>
+			<Header
+				title={`${isEditing ? "Editar" : "Nova"} Oferta de ${offerTypeLabel}`}
+				showBack
+				backgroundColor={corPrincipal}
+				rightAction={<TouchableOpacity accessibilityRole="button" accessibilityLabel="Informações da oferta"><Info color="#fff" size={22} /></TouchableOpacity>}
+			/>
 
 			<ScrollView
 				className="flex-1 px-5"
@@ -273,10 +372,55 @@ export default function NovaOferta() {
 				<View className="mb-4">
 					<Text className="text-gray-700 mb-2">Produto</Text>
 
-					<TouchableOpacity className="border border-gray-300 rounded-xl px-4 py-4 flex-row items-center justify-between">
-						<Text className="text-gray-900">Açaí in natura</Text>
+					<TouchableOpacity
+						onPress={() => setShowProducts((current) => !current)}
+						disabled={isEditing || productsLoading || products.length === 0}
+						className={`border border-gray-300 rounded-xl px-4 py-4 flex-row items-center justify-between ${isEditing ? "bg-gray-100 opacity-70" : ""}`}
+					>
+						<Text className={selectedProduct ? "text-gray-900" : "text-gray-500"}>
+							{productsLoading
+								? "Carregando produtos..."
+								: (selectedProduct?.name ?? "Nenhum produto disponível")}
+						</Text>
 						<ChevronRight color="#777" size={20} />
 					</TouchableOpacity>
+					{isEditing ? (
+						<Text className="mt-2 text-xs text-gray-500">
+							O produto não pode ser alterado durante a edição.
+						</Text>
+					) : null}
+
+					{productsError ? (
+						<Text className="mt-2 text-sm text-red-500">{productsError}</Text>
+					) : null}
+
+					{showProducts ? (
+						<View className="mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white">
+							{products.map((product, index) => (
+								<Pressable
+									key={product.id}
+									onPress={() => {
+										setSelectedProductId(product.id)
+										setShowProducts(false)
+									}}
+									className={`px-4 py-3 ${
+										index < products.length - 1
+											? "border-b border-gray-100"
+											: ""
+									} ${selectedProductId === product.id ? "bg-purple-50" : ""}`}
+								>
+									<Text className="font-medium text-gray-900">
+										{product.name}
+									</Text>
+									{product.description ? (
+										<Text className="mt-1 text-xs text-gray-500">
+											{product.description}
+										</Text>
+									) : null}
+								</Pressable>
+							))}
+						</View>
+					) : null}
 				</View>
 
 				<View className="mb-2">
@@ -295,14 +439,16 @@ export default function NovaOferta() {
 							className="rounded-xl overflow-hidden"
 							style={{ backgroundColor: corPrincipal }}
 						>
-							{(["kg", "lata", "tela"] as const).map((item) => (
+							{offerUnits.map((unit) => (
 								<TouchableOpacity
-									key={item}
-									onPress={() => setUnidade(item)}
-									className={`px-6 py-3 ${unidade === item ? "bg-white/20" : ""}`}
+									key={unit.id}
+									onPress={() => setSelectedUnitId(unit.id)}
+									className={`px-6 py-3 ${
+										selectedUnitId === unit.id ? "bg-white/20" : ""
+									}`}
 								>
 									<Text className="text-white font-semibold text-center">
-										{UNIDADES[item].label}
+										{unit.label}
 									</Text>
 								</TouchableOpacity>
 							))}
@@ -313,14 +459,6 @@ export default function NovaOferta() {
 					Escolha a unidade que deseja informar
 				</Text>
 
-				<View className="mb-4 rounded-xl bg-purple-50 px-4 py-3">
-					<Text className="text-sm font-medium text-purple-950">
-						Publicação: {displayedOfferDate}
-					</Text>
-					<Text className="mt-1 text-sm text-purple-800">
-						Validade automática: {displayedExpiresAt} ({validityDays} dias)
-					</Text>
-				</View>
 				<View className="mb-2">
 					<Text className="text-gray-700 mb-2">Preço</Text>
 
@@ -337,14 +475,16 @@ export default function NovaOferta() {
 							/>
 						</View>
 
-						<Text className="text-gray-700 text-base">por kg</Text>
+						<Text className="text-gray-700 text-base">
+							por {selectedUnit?.label.toLowerCase() ?? "unidade"}
+						</Text>
 					</View>
 				</View>
 				<View
 					className="rounded-2xl border p-5 mb-5"
 					style={{
 						borderColor: corPrincipal,
-						backgroundColor: unidade === "tela" ? "#F1FAF2" : "#FBF7FF",
+						backgroundColor: selectedUnit?.value === "tela" ? "#F1FAF2" : "#FBF7FF",
 					}}
 				>
 					<Text
@@ -379,7 +519,7 @@ export default function NovaOferta() {
 				<View
 					className="rounded-xl px-4 py-3 flex-row items-center gap-2"
 					style={{
-						backgroundColor: unidade === "tela" ? "#EAF7EC" : "#F3EAFB",
+						backgroundColor: selectedUnit?.value === "tela" ? "#EAF7EC" : "#F3EAFB",
 					}}
 				>
 					<Info color={corPrincipal} size={16} />
@@ -391,12 +531,18 @@ export default function NovaOferta() {
 				<View className="mt-6">
 					<Pressable
 						onPress={handleCreateOffer}
-						disabled={submitting}
-						className={`mt-5 bg-green-600 rounded-xl py-4 flex-row items-center justify-center gap-2 mb-3 ${submitting ? "opacity-60" : ""}`}
+						disabled={submitting || productsLoading}
+						className={`mt-5 bg-green-600 rounded-xl py-4 flex-row items-center justify-center gap-2 mb-3 ${submitting || productsLoading ? "opacity-60" : ""}`}
 					>
 						{submitting && <ActivityIndicator color="#FFFFFF" />}
 						<Text className="text-white font-bold text-base">
-							{submitting ? "Criando oferta..." : `Criar Oferta de ${offerTypeLabel}`}
+							{submitting
+								? isEditing
+									? "Salvando alterações..."
+									: "Criando oferta..."
+								: isEditing
+									? "Salvar alterações"
+									: `Criar Oferta de ${offerTypeLabel}`}
 						</Text>
 					</Pressable>
 				</View>

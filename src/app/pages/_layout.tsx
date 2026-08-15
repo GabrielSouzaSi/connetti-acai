@@ -19,6 +19,8 @@ export default function PagesLayout() {
 
 			<Stack.Screen name="chat" />
 			<Stack.Screen name="offerDetails" />
+			<Stack.Screen name="municipalityAverages" />
+			<Stack.Screen name="priceHistory" />
 			<Stack.Screen name="plans" />
 		</Stack>
 	)

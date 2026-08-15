@@ -1,3 +1,4 @@
+import { Header } from "@/components/Header"
 import { useEffect, useRef, useState } from "react"
 import {
 	FlatList,
@@ -9,7 +10,7 @@ import {
 	TextInput,
 	View,
 } from "react-native"
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 type ChatMessage = {
 	type: string
@@ -98,28 +99,26 @@ export default function ChatScreen() {
 	}
 
 	return (
-		<SafeAreaView edges={["top"]} className="flex-1 bg-slate-900">
+		<View className="flex-1 bg-slate-900">
 			<KeyboardAvoidingView
 				key={keyboardKey}
 				style={{ flex: 1 }}
 				behavior={Platform.OS === "ios" ? "padding" : "height"}
 				keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
 			>
-				<View className="bg-blue-600 px-5 py-4 rounded-b-3xl">
-					<Text className="text-white text-xl font-bold">Chat em Tempo Real</Text>
-
-					<View className="flex-row items-center mt-2">
+				<Header title="Chat em tempo real" showBack backgroundColor="#2563EB">
+					<View className="flex-row items-center justify-center">
 						<View
 							className={`w-2.5 h-2.5 rounded-full mr-2 ${
 								connected ? "bg-green-400" : "bg-red-400"
 							}`}
 						/>
 
-						<Text className="text-blue-100 text-sm">
+						<Text className="text-sm text-blue-100">
 							{connected ? "Online" : "Offline"}
 						</Text>
 					</View>
-				</View>
+				</Header>
 
 				<FlatList
 					ref={flatListRef}
@@ -189,6 +188,6 @@ export default function ChatScreen() {
 					</View>
 				</View>
 			</KeyboardAvoidingView>
-		</SafeAreaView>
+		</View>
 	)
 }

@@ -13,6 +13,7 @@ export const PROFILE_REGISTRY = {
 
 export const FEATURE_ACCESS = {
 	manageOffers: {
+		roles: ["producer", "buyer"],
 		permissions: ["create offers"],
 	},
 	startNegotiation: {

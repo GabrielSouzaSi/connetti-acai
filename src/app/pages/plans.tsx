@@ -1,6 +1,5 @@
-import { router } from "expo-router"
+import { Header } from "@/components/Header"
 import {
-	ArrowLeft,
 	BarChart3,
 	Check,
 	Crown,
@@ -76,33 +75,19 @@ export default function PlansScreen() {
 
 	return (
 		<View className="flex-1 bg-white">
+			<Header
+				title="Planos"
+				subtitle="Mais inteligência, menos anúncios"
+				showBack
+				rightAction={<View className="h-9 w-9 items-center justify-center rounded-full bg-white/20"><Gem size={18} color="#FFFFFF" /></View>}
+			/>
 			<ScrollView
 				className="flex-1"
-				contentContainerClassName="px-5 pt-12 pb-8"
+				contentContainerClassName="px-5 pt-6 pb-8"
 				showsVerticalScrollIndicator={false}
 			>
-				<View className="flex-row items-center justify-between mb-3">
-					<Pressable onPress={() => router.back()}>
-						<ArrowLeft size={24} color="#512B76" />
-					</Pressable>
-
-					<View className="flex-row items-center gap-2">
-						<View className="w-7 h-7 rounded-full bg-purple-700 items-center justify-center">
-							<Gem size={16} color="#fff" />
-						</View>
-
-						<Text className="text-purple-800 font-bold text-base">Connetti Açaí</Text>
-					</View>
-
-					<View className="w-6" />
-				</View>
-
 				<Text className="text-3xl font-extrabold text-purple-900 text-center">
 					Escolha seu plano
-				</Text>
-
-				<Text className="text-gray-500 text-center mt-1 mb-5">
-					Mais inteligência, menos anúncios
 				</Text>
 
 				<View className="gap-3">

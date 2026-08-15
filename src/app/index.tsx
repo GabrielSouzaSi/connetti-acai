@@ -6,7 +6,6 @@ import { useRouter } from "expo-router"
 import React, { useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import {
-	Alert,
 	Image,
 	Keyboard,
 	KeyboardAvoidingView,
@@ -17,6 +16,7 @@ import {
 	View,
 } from "react-native"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
+import Toast from "react-native-toast-message"
 
 type FormData = {
 	identifier: string
@@ -40,22 +40,13 @@ export default function App() {
 		setIsLoading(true)
 		try {
 			await signIn(identifier, password)
-			// Toast.show({
-			// 	type: "success",
-			// 	text1: "Login realizado!",
-			// 	text2: "Bem-vindo ao AppFiscal!",
-			// })
 		} catch (error) {
 			console.log("Error handleSignIn =>", error)
-			// Toast.show({
-			// 	type: "error",
-			// 	text1: "Não foi possível fazer login",
-			// 	text2: "Verifique seus dados e tente novamente.",
-			// })
-			Alert.alert(
-				"Erro",
-				"Não foi possível fazer login. Verifique seus dados e tente novamente.",
-			)
+			Toast.show({
+				type: "error",
+				text1: "Erro ao entrar",
+				text2: "Verifique seus dados e tente novamente.",
+			})
 		} finally {
 			Keyboard.dismiss()
 			setIsLoading(false)
@@ -69,6 +60,7 @@ export default function App() {
 			>
 				<ScrollView
 					showsHorizontalScrollIndicator={false}
+					showsVerticalScrollIndicator={false}
 					contentContainerStyle={{ flexGrow: 1 }}
 					keyboardShouldPersistTaps="handled"
 				>

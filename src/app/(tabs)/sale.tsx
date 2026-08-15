@@ -1,14 +1,42 @@
 import { AcaiCard, AcaiOffer } from "@/components/AcaiCard"
+import {
+	filterOffers,
+	OfferExplorerHeader,
+	OfferTypeFilter,
+} from "@/components/OfferExplorerHeader"
+import { useAccess } from "@/hooks/useAccess"
+import { useAuth } from "@/hooks/useAuth"
 import { server } from "@/server/api"
-import { Filter, Search } from "lucide-react-native"
-import { useEffect, useState } from "react"
-import { FlatList, Image, StatusBar, Text, View } from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
-import colors from "tailwindcss/colors"
+import { router } from "expo-router"
+import { List } from "lucide-react-native"
+import { useEffect, useMemo, useState } from "react"
+import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native"
 
 export default function TabSaleScreen() {
 	const [offers, setOffers] = useState<AcaiOffer[]>([])
 	const [loading, setLoading] = useState(true)
+	const [query, setQuery] = useState("")
+	const [typeFilter, setTypeFilter] = useState<OfferTypeFilter>("all")
+	const { canAccess } = useAccess()
+	const { user } = useAuth()
+	const municipalityId = user?.municipality_id
+	const municipalityName = user?.municipality?.name
+	const municipalityOffers = useMemo(() => {
+		return offers.filter((offer) => {
+			if (municipalityId && offer.municipality?.id === municipalityId) {
+				return true
+			}
+
+			return (
+				offer.municipality?.name.toLocaleLowerCase("pt-BR") ===
+				municipalityName?.toLocaleLowerCase("pt-BR")
+			)
+		})
+	}, [municipalityId, municipalityName, offers])
+	const visibleOffers = useMemo(
+		() => filterOffers(municipalityOffers, query, typeFilter),
+		[municipalityOffers, query, typeFilter],
+	)
 
 	const image = require("@/assets/acai.jpg")
 
@@ -26,55 +54,40 @@ export default function TabSaleScreen() {
 
 	useEffect(() => {
 		loadOffers()
-	}, [])
-
-	if (loading) {
-		return (
-			<View className="flex-1 items-center justify-center bg-white">
-				<Text className="text-lg font-bold text-gray-500">Carregando ofertas...</Text>
-			</View>
-		)
-	}
-
-	if (offers.length === 0) {
-		return (
-			<View className="flex-1 items-center justify-center bg-white">
-				<Text className="text-lg font-bold text-gray-500">Nenhuma oferta disponível</Text>
-			</View>
-		)
-	}
+	}, [municipalityId])
 
 	return (
 		<View className="flex-1 bg-white">
-			<StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-
-			<SafeAreaView edges={["top"]} style={{ backgroundColor: "#512B76" }} />
-
-			<View className="flex-row items-center justify-between px-5 pb-4 bg-white">
-				<View className="w-[54px] h-[22px] bg-transparent" />
-
-				<Image
-					className="w-40 h-16"
-					source={require("@/assets/logo.png")}
-					resizeMode="contain"
-				/>
-
-				<View className="flex-row items-center gap-5">
-					<Search size={22} color={colors.purple[950]} />
-					<Filter size={22} color={colors.purple[950]} />
-				</View>
-			</View>
+			<OfferExplorerHeader
+				query={query}
+				onQueryChange={setQuery}
+				typeFilter={typeFilter}
+				onTypeFilterChange={setTypeFilter}
+			/>
 
 			<FlatList
-				data={offers}
+				data={visibleOffers}
 				keyExtractor={(item) => String(item.id)}
 				contentContainerClassName="px-5 pb-6"
 				showsVerticalScrollIndicator={false}
 				ListHeaderComponent={
 					<View className="mb-4">
-						<Text className="text-2xl font-bold text-purple-950 py-2">
-							Ofertas disponíveis
-						</Text>
+						<View className="mt-4 flex-row items-center justify-between gap-3 py-2">
+							<Text className="flex-1 text-2xl font-bold text-purple-950">
+								Ofertas em {municipalityName ?? "seu município"}
+							</Text>
+							{canAccess("manageOffers") ? (
+								<Pressable
+									onPress={() => router.push("/pages/myOffers")}
+									accessibilityRole="button"
+									accessibilityLabel="Listar minhas ofertas"
+									className="flex-row items-center gap-2 rounded-xl bg-purple-950 px-3 py-2"
+								>
+									<List size={17} color="#FFFFFF" />
+									<Text className="font-semibold text-white">Minhas ofertas</Text>
+								</Pressable>
+							) : null}
+						</View>
 
 						<Text className="text-lg font-bold text-purple-950">
 							Encontre as melhores ofertas de açaí da Amazônia
@@ -82,6 +95,20 @@ export default function TabSaleScreen() {
 					</View>
 				}
 				renderItem={({ item }) => <AcaiCard item={item} image={image} />}
+				ListEmptyComponent={
+					<View className="mt-24 items-center justify-center">
+						{loading ? (
+							<>
+								<ActivityIndicator size="large" color="#512B76" />
+								<Text className="mt-3 text-lg font-bold text-gray-500">Carregando ofertas...</Text>
+							</>
+						) : (
+							<Text className="text-center text-lg font-bold text-gray-500">
+								{query || typeFilter !== "all" ? "Nenhuma oferta encontrada" : "Nenhuma oferta disponível"}
+							</Text>
+						)}
+					</View>
+				}
 			/>
 		</View>
 	)

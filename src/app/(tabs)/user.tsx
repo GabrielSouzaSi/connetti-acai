@@ -1,6 +1,7 @@
 import { Feature } from "@/auth/accessControl"
-import { useAuth } from "@/hooks/useAuth"
+import { Header } from "@/components/Header"
 import { useAccess } from "@/hooks/useAccess"
+import { useAuth } from "@/hooks/useAuth"
 import { router } from "expo-router"
 import {
 	BadgeCheck,
@@ -17,8 +18,7 @@ import {
 	User,
 } from "lucide-react-native"
 import React from "react"
-import { Image, Pressable, ScrollView, StatusBar, Text, View } from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
+import { Image, Pressable, ScrollView, Text, View } from "react-native"
 
 type MenuOption = {
 	title: string
@@ -77,11 +77,9 @@ export default function TabUserScreen() {
 
 	return (
 		<View className="flex-1 bg-white">
-			<StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-
-			<SafeAreaView edges={["top"]} style={{ backgroundColor: "#512B76" }} />
-			<ScrollView className="flex-1 bg-gray-50">
-				<View className="px-5 pt-12 pb-6 bg-white">
+			<Header title="Perfil" subtitle="Conta e preferências" />
+			<ScrollView showsVerticalScrollIndicator={false} className="flex-1 bg-gray-50">
+				<View className="px-5 pt-6 pb-6 bg-white">
 					<View className="flex-row items-center gap-4">
 						<Image
 							source={{
