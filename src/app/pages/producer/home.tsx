@@ -1,9 +1,11 @@
 import { DateSelectionModal } from "@/components/DateSelectionModal"
 import { Header } from "@/components/Header"
 import { PriceFiltersModal } from "@/components/PriceFiltersModal"
+import { useAuth } from "@/hooks/useAuth"
 import { MunicipalityAveragePrice, offersApi } from "@/server/offers"
 import { formatCurrency, PriceHistoryItem } from "@/utils/priceAnalytics"
 import {
+	BadgeCheck,
 	CalendarDays,
 	ChevronDown,
 	Filter,
@@ -14,6 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import {
 	ActivityIndicator,
+	Image,
 	Pressable,
 	ScrollView,
 	Text,
@@ -110,6 +113,7 @@ export default function PageProducerHomeScreen() {
 	const { width: windowWidth } = useWindowDimensions()
 	const [currentAverages, setCurrentAverages] = useState<MunicipalityAveragePrice[]>([])
 	const [snapshots, setSnapshots] = useState<DailySnapshot[]>([])
+	const { user } = useAuth()
 	const [loading, setLoading] = useState(true)
 	const [filterVisible, setFilterVisible] = useState(false)
 	const [dateModalVisible, setDateModalVisible] = useState(false)
@@ -184,6 +188,51 @@ export default function PageProducerHomeScreen() {
 				contentContainerClassName="px-4 pb-28"
 				showsVerticalScrollIndicator={false}
 			>
+				<View className="px-5 pt-6 pb-6 rounded-2xl border border-zinc-200 bg-white mt-3">
+					<View className="flex-row items-center gap-4">
+						<Image
+							source={{
+								uri: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e",
+							}}
+							className="w-20 h-20 rounded-full"
+						/>
+
+						<View className="flex-1">
+							<Text className="text-xl font-bold text-gray-900">{user?.name}</Text>
+
+							<View className="flex-row items-center mt-1">
+								<MapPin size={16} color="#6B7280" />
+								<Text className="text-gray-500 ml-1">
+									{user?.municipality
+										? `${user.municipality.name} - ${user.municipality.state}`
+										: user?.community}
+								</Text>
+							</View>
+
+							<View className="flex-row items-center mt-1">
+								<BadgeCheck size={16} color="#22C55E" />
+								<Text className="text-green-600 ml-1 font-medium">
+									{user?.profile_label ?? "Perfil verificado"}
+								</Text>
+							</View>
+						</View>
+					</View>
+
+					{/* <View className="flex-row items-center mt-5">
+						{Array.from({ length: 5 }).map((_, index) => (
+							<Star
+								key={index}
+								size={18}
+								color="#F59E0B"
+								fill="#F59E0B"
+								className="mr-1"
+							/>
+						))}
+
+						<Text className="text-gray-700 ml-2 font-semibold">4,8</Text>
+						<Text className="text-gray-500 ml-1">(128 avaliações)</Text>
+					</View> */}
+				</View>
 				<View className="mt-4 flex-row gap-3">
 					<View className="flex-1 gap-2">
 						<Text className="text-sm font-medium text-zinc-600">Município</Text>
