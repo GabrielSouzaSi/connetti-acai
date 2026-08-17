@@ -1,8 +1,15 @@
 import { Header } from "@/components/Header"
 import { useAuth } from "@/hooks/useAuth"
 import { getOfferOwnerId } from "@/utils/negotiationRoles"
+import {
+	calculateOfferValues,
+	formatOfferCurrency,
+	formatOfferQuantity,
+	OfferUnit,
+	UnitValue,
+} from "@/utils/offerValues"
 import { router, useLocalSearchParams } from "expo-router"
-import { CalendarClock, Handshake, MapPin, Package, Scale } from "lucide-react-native"
+import { CalendarClock, Handshake, MapPin, Scale } from "lucide-react-native"
 import { Image, Pressable, ScrollView, Text, View } from "react-native"
 
 type OfferDetails = {
@@ -73,7 +80,10 @@ export default function PageOfferDetails() {
 				<Text className="mt-2 text-center text-gray-500">
 					Não foi possível carregar os detalhes desta oferta.
 				</Text>
-				<Pressable onPress={() => router.back()} className="mt-6 rounded-xl bg-purple-900 px-6 py-3">
+				<Pressable
+					onPress={() => router.back()}
+					className="mt-6 rounded-xl bg-purple-900 px-6 py-3"
+				>
 					<Text className="font-semibold text-white">Voltar</Text>
 				</Pressable>
 			</View>
@@ -92,6 +102,7 @@ export default function PageOfferDetails() {
 	const isOwner = getOfferOwnerId(offer) === Number(user?.id)
 	const participantLabel = isBuyOffer ? "Comprador" : "Produtor · vendedor"
 	const actionLabel = isBuyOffer ? "Fazer proposta de venda" : "Fazer proposta de compra"
+	const unitValues = calculateOfferValues(Number(originalVolume), originalUnit, price)
 
 	return (
 		<View className="flex-1 bg-gray-50">
@@ -108,7 +119,9 @@ export default function PageOfferDetails() {
 					<View className="flex-row items-start justify-between gap-3">
 						<View className="flex-1">
 							<Text className="text-sm text-gray-500">Produto</Text>
-							<Text className="mt-1 text-xl font-bold text-gray-900">{productName}</Text>
+							<Text className="mt-1 text-xl font-bold text-gray-900">
+								{productName}
+							</Text>
 						</View>
 						<Text className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800">
 							{typeLabel}
@@ -125,9 +138,26 @@ export default function PageOfferDetails() {
 				<View className="mt-4 rounded-2xl border border-gray-200 bg-white p-5">
 					<Text className="text-sm text-gray-500">Preço</Text>
 					<Text className="mt-1 text-3xl font-bold text-purple-950">
-						R$ {Number.isFinite(price) ? price.toFixed(2).replace(".", ",") : "—"}
+						{formatOfferCurrency(price)}
 					</Text>
 					<Text className="mt-1 text-sm text-gray-500">por {originalUnit}</Text>
+
+					{unitValues ? (
+						<View className="mt-5 gap-3 border-t border-gray-100 pt-4">
+							<View className="rounded-2xl bg-purple-950 p-4">
+								<Text className="text-sm font-semibold text-purple-100">
+									Valor total da oferta
+								</Text>
+								<Text className="mt-1 text-3xl font-bold text-white">
+									{formatOfferCurrency(unitValues.kg.total)}
+								</Text>
+							</View>
+							<Text className="font-semibold text-gray-900">Valores por unidade</Text>
+							<UnitValueRow label="Quilograma" value={unitValues.kg} />
+							<UnitValueRow label="Lata" value={unitValues.lata} />
+							<UnitValueRow label="Tela" value={unitValues.tela} />
+						</View>
+					) : null}
 				</View>
 
 				<View className="mt-4 rounded-2xl border border-gray-200 bg-white p-5">
@@ -166,14 +196,18 @@ export default function PageOfferDetails() {
 						<CalendarClock size={20} color="#512B76" />
 						<View>
 							<Text className="text-xs text-gray-500">Publicada em</Text>
-							<Text className="font-semibold text-gray-900">{formatDate(createdAt)}</Text>
+							<Text className="font-semibold text-gray-900">
+								{formatDate(createdAt)}
+							</Text>
 						</View>
 					</View>
 					<View className="mt-4 flex-row items-center gap-3">
 						<CalendarClock size={20} color="#512B76" />
 						<View>
 							<Text className="text-xs text-gray-500">Validade</Text>
-							<Text className="font-semibold text-gray-900">{formatDate(expiresAt)}</Text>
+							<Text className="font-semibold text-gray-900">
+								{formatDate(expiresAt)}
+							</Text>
 						</View>
 					</View>
 				</View>
@@ -193,37 +227,79 @@ export default function PageOfferDetails() {
 
 				{offer.user?.name ? (
 					<View className="mt-4 flex-row items-center gap-3 rounded-2xl border border-gray-200 bg-white p-5">
-						<Package size={22} color="#512B76" />
+						<Image
+							source={{
+								uri: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e",
+							}}
+							className="w-20 h-20 rounded-full"
+						/>
 						<View className="flex-1">
-							<Text className="text-xs font-semibold uppercase text-purple-700">{participantLabel}</Text>
+							<Text className="text-xs font-semibold uppercase text-purple-700">
+								{participantLabel}
+							</Text>
 							<Text className="font-semibold text-gray-900">{offer.user.name}</Text>
 							<Text className="mt-1 text-xs text-gray-500">
-								{isBuyOffer ? "Quer comprar o produto anunciado." : "É quem está vendendo e decide sobre as propostas."}
+								{isBuyOffer
+									? "Quer comprar o produto anunciado."
+									: "É quem está vendendo e decide sobre as propostas."}
 							</Text>
 						</View>
-						{isOwner ? <Text className="rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-800">Você</Text> : null}
+						{isOwner ? (
+							<Text className="rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-800">
+								Você
+							</Text>
+						) : null}
 					</View>
 				) : null}
 
 				{isOwner ? (
 					<View className="mt-5 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3">
 						<Text className="font-bold text-purple-900">Esta oferta é sua</Text>
-						<Text className="mt-1 text-sm text-purple-700">Acompanhe as propostas recebidas em Minhas negociações.</Text>
+						<Text className="mt-1 text-sm text-purple-700">
+							Acompanhe as propostas recebidas em Minhas negociações.
+						</Text>
 					</View>
-				) : <Pressable
-					onPress={() =>
-						router.push({
-							pathname: "/pages/negotiation",
-							params: { offer: JSON.stringify(offer) },
-						})
-					}
-					className="mt-5 flex-row items-center justify-center gap-2 rounded-xl bg-green-600 py-4"
-				>
-					<Handshake size={20} color="#fff" />
-					<Text className="font-bold text-white">{actionLabel}</Text>
-				</Pressable>
-				}
+				) : (
+					<Pressable
+						onPress={() =>
+							router.push({
+								pathname: "/pages/negotiation",
+								params: { offer: JSON.stringify(offer) },
+							})
+						}
+						className="mt-5 flex-row items-center justify-center gap-2 rounded-xl bg-green-600 py-4"
+					>
+						<Handshake size={20} color="#fff" />
+						<Text className="font-bold text-white">{actionLabel}</Text>
+					</Pressable>
+				)}
 			</ScrollView>
+		</View>
+	)
+}
+
+const UNIT_LABELS: Record<OfferUnit, { singular: string; plural: string }> = {
+	kg: { singular: "kg", plural: "kg" },
+	lata: { singular: "lata", plural: "latas" },
+	tela: { singular: "tela", plural: "telas" },
+}
+
+function UnitValueRow({ label, value }: { label: string; value: UnitValue }) {
+	const unitLabel =
+		value.quantity === 1 ? UNIT_LABELS[value.unit].singular : UNIT_LABELS[value.unit].plural
+
+	return (
+		<View className="rounded-xl bg-gray-50 p-3">
+			<View className="flex-row items-center justify-between gap-3">
+				<Text className="font-medium text-gray-700">{label}</Text>
+				<Text className="text-lg font-bold text-purple-900">
+					{formatOfferCurrency(value.unitPrice)} / {UNIT_LABELS[value.unit].singular}
+				</Text>
+			</View>
+			<Text className="mt-2 text-base font-medium text-gray-700">
+				{formatOfferQuantity(value.quantity)} {unitLabel} ×{" "}
+				{formatOfferCurrency(value.unitPrice)} = {formatOfferCurrency(value.total)}
+			</Text>
 		</View>
 	)
 }
