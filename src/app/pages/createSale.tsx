@@ -3,6 +3,11 @@ import { API_URL } from "@/config/env"
 import { useAccess } from "@/hooks/useAccess"
 import { useAuth } from "@/hooks/useAuth"
 import { server } from "@/server/api"
+import {
+	calculateOfferValues,
+	formatOfferCurrency,
+	formatOfferQuantity,
+} from "@/utils/offerValues"
 import axios from "axios"
 import { router, useLocalSearchParams } from "expo-router"
 import { ChevronRight, Grid3X3, Info, Package, Scale } from "lucide-react-native"
@@ -22,12 +27,6 @@ const COLORS = {
 	primary: "#3B0A5F",
 	green: "#2E7D32",
 	background: "#F8F5FA",
-}
-
-const UNIT_KG: Record<string, number> = {
-	kg: 1,
-	lata: 14,
-	tela: 28,
 }
 
 const formatCurrency = (value: string) => {
@@ -163,18 +162,8 @@ export default function NovaOferta() {
 
 	const equivalencia = useMemo(() => {
 		const valor = Number(quantidade.replace(",", ".")) || 0
-		const totalKg = valor * (UNIT_KG[selectedUnit?.value ?? ""] ?? 1)
-
-		return {
-			kg: totalKg,
-			lata: totalKg / 14,
-			tela: totalKg / 28,
-		}
-	}, [quantidade, selectedUnit?.value])
-
-	function formatarValor(valor: number) {
-		return Number.isInteger(valor) ? String(valor) : valor.toFixed(1).replace(".", ",")
-	}
+		return calculateOfferValues(valor, selectedUnit?.value, centsToReais(price))
+	}, [price, quantidade, selectedUnit?.value])
 
 	useEffect(() => {
 		if (!editingOffer) return
@@ -494,24 +483,44 @@ export default function NovaOferta() {
 						Equivalência automática
 					</Text>
 
+					{equivalencia ? (
+						<View className="mb-5 rounded-2xl p-4" style={{ backgroundColor: corPrincipal }}>
+							<Text className="text-center text-sm font-semibold text-white/80">
+								Valor total da oferta
+							</Text>
+							<Text className="mt-1 text-center text-3xl font-bold text-white">
+								{formatOfferCurrency(equivalencia.kg.total)}
+							</Text>
+						</View>
+					) : null}
+
 					<LinhaEquivalencia
 						icon={<Scale color="#fff" size={18} />}
 						label="KG"
-						valor={`${formatarValor(equivalencia.kg)} kg`}
+						unit="kg"
+						quantity={equivalencia?.kg.quantity ?? 0}
+						unitPrice={equivalencia?.kg.unitPrice ?? 0}
+						total={equivalencia?.kg.total ?? 0}
 						cor={corPrincipal}
 					/>
 
 					<LinhaEquivalencia
 						icon={<Package color="#fff" size={18} />}
 						label="LATA"
-						valor={`${formatarValor(equivalencia.lata)} latas`}
+						unit="lata"
+						quantity={equivalencia?.lata.quantity ?? 0}
+						unitPrice={equivalencia?.lata.unitPrice ?? 0}
+						total={equivalencia?.lata.total ?? 0}
 						cor={corPrincipal}
 					/>
 
 					<LinhaEquivalencia
 						icon={<Grid3X3 color="#fff" size={18} />}
 						label="TELA"
-						valor={`${formatarValor(equivalencia.tela)} telas`}
+						unit="tela"
+						quantity={equivalencia?.tela.quantity ?? 0}
+						unitPrice={equivalencia?.tela.unitPrice ?? 0}
+						total={equivalencia?.tela.total ?? 0}
 						cor={corPrincipal}
 					/>
 				</View>
@@ -554,28 +563,39 @@ export default function NovaOferta() {
 type LinhaProps = {
 	icon: React.ReactNode
 	label: string
-	valor: string
+	unit: "kg" | "lata" | "tela"
+	quantity: number
+	unitPrice: number
+	total: number
 	cor: string
 }
 
-function LinhaEquivalencia({ icon, label, valor, cor }: LinhaProps) {
+function LinhaEquivalencia({ icon, label, unit, quantity, unitPrice, total, cor }: LinhaProps) {
+	const unitLabel = unit === "kg" ? "kg" : quantity === 1 ? unit : `${unit}s`
+
 	return (
-		<View className="flex-row items-center justify-between mb-4">
-			<View className="flex-row items-center gap-3">
-				<View
-					className="w-9 h-9 rounded-full items-center justify-center"
-					style={{ backgroundColor: cor }}
-				>
-					{icon}
+		<View className="mb-4 rounded-xl bg-white/70 p-3">
+			<View className="flex-row items-center justify-between gap-3">
+				<View className="flex-row items-center gap-3">
+					<View
+						className="w-9 h-9 rounded-full items-center justify-center"
+						style={{ backgroundColor: cor }}
+					>
+						{icon}
+					</View>
+
+					<Text className="font-semibold" style={{ color: cor }}>
+						{label}
+					</Text>
 				</View>
 
-				<Text className="font-semibold" style={{ color: cor }}>
-					{label}
+				<Text className="text-xl font-bold" style={{ color: cor }}>
+					{formatOfferCurrency(unitPrice)}
 				</Text>
 			</View>
 
-			<Text className="text-2xl font-bold" style={{ color: cor }}>
-				{valor}
+			<Text className="mt-3 text-base font-medium text-gray-800">
+				{formatOfferQuantity(quantity)} {unitLabel} × {formatOfferCurrency(unitPrice)} = {formatOfferCurrency(total)}
 			</Text>
 		</View>
 	)

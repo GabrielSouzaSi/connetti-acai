@@ -7,7 +7,7 @@ import {
 import { useAccess } from "@/hooks/useAccess"
 import { useAuth } from "@/hooks/useAuth"
 import { server } from "@/server/api"
-import { router } from "expo-router"
+import { router, useLocalSearchParams } from "expo-router"
 import { List } from "lucide-react-native"
 import { useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native"
@@ -19,11 +19,20 @@ export default function TabSaleScreen() {
 	const [typeFilter, setTypeFilter] = useState<OfferTypeFilter>("all")
 	const { canAccess } = useAccess()
 	const { user } = useAuth()
-	const municipalityId = user?.municipality_id
-	const municipalityName = user?.municipality?.name
+	const params = useLocalSearchParams<{
+		municipalityId?: string
+		municipalityName?: string
+	}>()
+	const selectedMunicipalityId = params.municipalityId
+		? Number(params.municipalityId)
+		: null
+	const municipalityId = Number.isInteger(selectedMunicipalityId)
+		? selectedMunicipalityId
+		: user?.municipality_id
+	const municipalityName = params.municipalityName ?? user?.municipality?.name
 	const municipalityOffers = useMemo(() => {
 		return offers.filter((offer) => {
-			if (municipalityId && offer.municipality?.id === municipalityId) {
+			if (municipalityId != null && offer.municipality?.id === municipalityId) {
 				return true
 			}
 
@@ -54,7 +63,7 @@ export default function TabSaleScreen() {
 
 	useEffect(() => {
 		loadOffers()
-	}, [municipalityId])
+	}, [])
 
 	return (
 		<View className="flex-1 bg-white">
@@ -104,7 +113,9 @@ export default function TabSaleScreen() {
 							</>
 						) : (
 							<Text className="text-center text-lg font-bold text-gray-500">
-								{query || typeFilter !== "all" ? "Nenhuma oferta encontrada" : "Nenhuma oferta disponível"}
+								{query || typeFilter !== "all"
+									? "Nenhuma oferta encontrada com esses filtros."
+									: `Não há ofertas disponíveis em ${municipalityName ?? "este município"}.`}
 							</Text>
 						)}
 					</View>
