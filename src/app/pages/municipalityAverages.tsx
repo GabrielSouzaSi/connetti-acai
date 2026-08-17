@@ -2,18 +2,19 @@ import { DateSelectionModal } from "@/components/DateSelectionModal"
 import { Header } from "@/components/Header"
 import { useAuth } from "@/hooks/useAuth"
 import { MunicipalityAveragePrice, offersApi } from "@/server/offers"
-import { router } from "expo-router"
+import { router, useFocusEffect } from "expo-router"
 import {
 	BadgeCheck,
 	CalendarDays,
 	ChevronRight,
 	MapPin,
 	RefreshCw,
+	Search,
 	TrendingUp,
 	X,
 } from "lucide-react-native"
-import { useEffect, useState } from "react"
-import { ActivityIndicator, FlatList, Image, Pressable, Text, View } from "react-native"
+import { useCallback, useMemo, useState } from "react"
+import { ActivityIndicator, FlatList, Image, Pressable, Text, TextInput, View } from "react-native"
 
 function currency(value: number) {
 	return value.toLocaleString("pt-BR", {
@@ -38,9 +39,17 @@ function parseDate(value: string | null) {
 	return Number.isNaN(parsed.getTime()) ? new Date() : parsed
 }
 
+function normalize(value: string | null) {
+	return String(value ?? "")
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.toLocaleLowerCase("pt-BR")
+}
+
 type MunicipalityAveragesScreenProps = {
 	embedded?: boolean
 	selectable?: boolean
+	allowDateSelection?: boolean
 	title?: string
 	subtitle?: string
 }
@@ -48,20 +57,38 @@ type MunicipalityAveragesScreenProps = {
 export default function MunicipalityAveragesScreen({
 	embedded = false,
 	selectable = true,
+	allowDateSelection = true,
 	title = "Médias por município",
 	subtitle = "Selecione um município para ver as ofertas",
 }: MunicipalityAveragesScreenProps) {
 	const [myAverage, setMyAverage] = useState<MunicipalityAveragePrice | null>(null)
 	const [municipalities, setMunicipalities] = useState<MunicipalityAveragePrice[]>([])
 	const [loading, setLoading] = useState(true)
+	const [refreshing, setRefreshing] = useState(false)
 	const [error, setError] = useState("")
 	const [selectedDate, setSelectedDate] = useState<string | null>(null)
 	const [calendarVisible, setCalendarVisible] = useState(false)
+	const [searchVisible, setSearchVisible] = useState(false)
+	const [query, setQuery] = useState("")
 	const { user } = useAuth()
+	const normalizedQuery = normalize(query.trim())
+	const filteredMunicipalities = useMemo(
+		() =>
+			municipalities.filter((item) =>
+				normalize(`${item.municipalityName} ${item.state ?? ""}`).includes(normalizedQuery),
+			),
+		[municipalities, normalizedQuery],
+	)
+	const showMyAverage =
+		myAverage !== null &&
+		(!normalizedQuery ||
+			normalize(`${myAverage.municipalityName} ${myAverage.state ?? ""}`).includes(
+				normalizedQuery,
+			))
 
-	async function loadAverages() {
+	const loadAverages = useCallback(async (showLoading = true) => {
 		try {
-			setLoading(true)
+			if (showLoading) setLoading(true)
 			setError("")
 			const [ownAverage, municipalityAverages] = await Promise.all([
 				offersApi.averagePriceForMyMunicipality(selectedDate ?? undefined),
@@ -76,9 +103,18 @@ export default function MunicipalityAveragesScreen({
 					"Não foi possível carregar as médias por município.",
 			)
 		} finally {
-			setLoading(false)
+			if (showLoading) setLoading(false)
 		}
-	}
+	}, [selectedDate])
+
+	const refreshAverages = useCallback(async () => {
+		setRefreshing(true)
+		try {
+			await loadAverages(false)
+		} finally {
+			setRefreshing(false)
+		}
+	}, [loadAverages])
 
 	function selectMunicipality(item: MunicipalityAveragePrice) {
 		if (!selectable) return
@@ -93,9 +129,11 @@ export default function MunicipalityAveragesScreen({
 		})
 	}
 
-	useEffect(() => {
-		loadAverages()
-	}, [selectedDate])
+	useFocusEffect(
+		useCallback(() => {
+			void loadAverages()
+		}, [loadAverages]),
+	)
 
 	return (
 		<View className="flex-1 bg-gray-50">
@@ -104,16 +142,54 @@ export default function MunicipalityAveragesScreen({
 				subtitle={subtitle}
 				showBack={!embedded}
 				rightAction={
-					<Pressable
-						onPress={() => setCalendarVisible(true)}
-						accessibilityRole="button"
-						accessibilityLabel="Selecionar data das médias"
-						className="h-10 w-10 items-center justify-center rounded-full bg-white/15"
-					>
-						<CalendarDays size={21} color="#FFFFFF" />
-					</Pressable>
+					<View className="flex-row gap-2">
+						<Pressable
+							onPress={() => setSearchVisible((visible) => !visible)}
+							accessibilityRole="button"
+							accessibilityLabel="Pesquisar município"
+							className="h-10 w-10 items-center justify-center rounded-full bg-white/15"
+						>
+							<Search size={21} color="#FFFFFF" />
+						</Pressable>
+						{allowDateSelection ? (
+							<Pressable
+								onPress={() => setCalendarVisible(true)}
+								accessibilityRole="button"
+								accessibilityLabel="Selecionar data das médias"
+								className="h-10 w-10 items-center justify-center rounded-full bg-white/15"
+							>
+								<CalendarDays size={21} color="#FFFFFF" />
+							</Pressable>
+						) : null}
+					</View>
 				}
-			/>
+			>
+				{searchVisible ? (
+					<View className="flex-row items-center rounded-2xl bg-white px-4">
+						<Search size={19} color="#6B7280" />
+						<TextInput
+							value={query}
+							onChangeText={setQuery}
+							placeholder="Pesquisar município ou estado"
+							placeholderTextColor="#9CA3AF"
+							autoFocus
+							returnKeyType="search"
+							className="flex-1 px-3 py-3 text-gray-900"
+						/>
+						<Pressable
+							onPress={() => {
+								setQuery("")
+								setSearchVisible(false)
+							}}
+							accessibilityRole="button"
+							accessibilityLabel="Fechar pesquisa"
+							className="h-8 w-8 items-center justify-center"
+						>
+							<X size={19} color="#6B7280" />
+						</Pressable>
+					</View>
+				) : null}
+			</Header>
 
 			<View className="px-5 pt-6 pb-6 rounded-2xl border border-zinc-200 bg-white mt-3 mx-4">
 				<View className="flex-row items-center gap-4">
@@ -161,36 +237,40 @@ export default function MunicipalityAveragesScreen({
 				</View> */}
 			</View>
 
-			<View className="flex-row items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
-				<View>
-					<Text className="text-xs text-gray-500">Data das médias</Text>
-					<Text className="font-semibold text-purple-950">
-						{selectedDate ? formatDate(selectedDate) : "Hoje"}
-					</Text>
-				</View>
-				{selectedDate ? (
-					<Pressable
-						onPress={() => setSelectedDate(null)}
-						accessibilityRole="button"
-						accessibilityLabel="Voltar para as médias de hoje"
-						className="flex-row items-center gap-1 rounded-full bg-purple-100 px-3 py-2"
-					>
-						<X size={15} color="#512B76" />
-						<Text className="text-sm font-semibold text-purple-900">Hoje</Text>
-					</Pressable>
-				) : null}
-			</View>
+			{allowDateSelection ? (
+				<>
+					<View className="flex-row items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
+						<View>
+							<Text className="text-xs text-gray-500">Data das médias</Text>
+							<Text className="font-semibold text-purple-950">
+								{selectedDate ? formatDate(selectedDate) : "Hoje"}
+							</Text>
+						</View>
+						{selectedDate ? (
+							<Pressable
+								onPress={() => setSelectedDate(null)}
+								accessibilityRole="button"
+								accessibilityLabel="Voltar para as médias de hoje"
+								className="flex-row items-center gap-1 rounded-full bg-purple-100 px-3 py-2"
+							>
+								<X size={15} color="#512B76" />
+								<Text className="text-sm font-semibold text-purple-900">Hoje</Text>
+							</Pressable>
+						) : null}
+					</View>
 
-			<DateSelectionModal
-				visible={calendarVisible}
-				initialDate={parseDate(selectedDate)}
-				maximumDate={new Date()}
-				onApply={(date) => {
-					setSelectedDate(toIsoDate(date))
-					setCalendarVisible(false)
-				}}
-				onCancel={() => setCalendarVisible(false)}
-			/>
+					<DateSelectionModal
+						visible={calendarVisible}
+						initialDate={parseDate(selectedDate)}
+						maximumDate={new Date()}
+						onApply={(date) => {
+							setSelectedDate(toIsoDate(date))
+							setCalendarVisible(false)
+						}}
+						onCancel={() => setCalendarVisible(false)}
+					/>
+				</>
+			) : null}
 
 			{loading ? (
 				<View className="flex-1 items-center justify-center">
@@ -201,7 +281,7 @@ export default function MunicipalityAveragesScreen({
 				<View className="flex-1 items-center justify-center px-6">
 					<Text className="text-center text-red-600">{error}</Text>
 					<Pressable
-						onPress={loadAverages}
+						onPress={() => void loadAverages()}
 						className="mt-4 flex-row items-center gap-2 rounded-xl bg-purple-900 px-5 py-3"
 					>
 						<RefreshCw size={17} color="#FFFFFF" />
@@ -210,7 +290,10 @@ export default function MunicipalityAveragesScreen({
 				</View>
 			) : (
 				<FlatList
-					data={municipalities}
+					data={filteredMunicipalities}
+					refreshing={refreshing}
+					onRefresh={refreshAverages}
+					progressViewOffset={12}
 					keyExtractor={(item, index) =>
 						String(item.municipalityId ?? `${item.municipalityName}-${index}`)
 					}
@@ -218,7 +301,7 @@ export default function MunicipalityAveragesScreen({
 					contentContainerClassName="p-5 pb-10"
 					ListHeaderComponent={
 						<View>
-							{myAverage ? (
+							{showMyAverage ? (
 								<Pressable
 									onPress={() => selectMunicipality(myAverage)}
 									disabled={!selectable}
@@ -289,7 +372,9 @@ export default function MunicipalityAveragesScreen({
 					)}
 					ListEmptyComponent={
 						<Text className="py-16 text-center text-gray-500">
-							Nenhuma média municipal disponível.
+							{normalizedQuery
+								? "Nenhum município encontrado."
+								: "Nenhuma média municipal disponível."}
 						</Text>
 					}
 				/>

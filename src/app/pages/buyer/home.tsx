@@ -4,9 +4,10 @@ export default function PageBuyerHomeScreen() {
 	return (
 		<MunicipalityAveragesScreen
 			embedded
-			selectable={false}
+			selectable
+			allowDateSelection={false}
 			title="Médias por município"
-			subtitle="Acompanhe os preços médios do açaí"
+			subtitle="Selecione um município para ver as ofertas"
 		/>
 	)
 }
