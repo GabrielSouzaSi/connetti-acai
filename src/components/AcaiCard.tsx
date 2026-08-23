@@ -1,5 +1,5 @@
 import { router } from "expo-router"
-import { MapPin, Package, Star, TrendingUp } from "lucide-react-native"
+import { CalendarDays, MapPin, Package, Star, TrendingUp } from "lucide-react-native"
 import { Image, Pressable, Text, useWindowDimensions, View } from "react-native"
 
 export interface AcaiOffer {
@@ -47,6 +47,14 @@ interface AcaiCardProps {
 	image: any
 }
 
+function formatOfferDate(value: string) {
+	const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+	if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`
+
+	const date = new Date(value)
+	return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("pt-BR")
+}
+
 export function AcaiCard({ item, image }: AcaiCardProps) {
 	const { width } = useWindowDimensions()
 	const isCompact = width < 480
@@ -79,6 +87,13 @@ export function AcaiCard({ item, image }: AcaiCardProps) {
 								className="min-w-0 flex-1 text-sm font-medium text-gray-700"
 							>
 								{item.municipality.name} - {item.municipality.state}
+							</Text>
+						</View>
+
+						<View className="mt-1 flex-row items-center gap-1">
+							<CalendarDays size={14} color="#6B7280" />
+							<Text className="text-xs text-gray-500">
+								Oferta em {formatOfferDate(item.dates.offer_date)}
 							</Text>
 						</View>
 
@@ -149,6 +164,13 @@ export function AcaiCard({ item, image }: AcaiCardProps) {
 						<MapPin size={14} color="#7C3AED" />
 						<Text className="text-gray-700 font-medium text-sm">
 							{item.municipality.name} - {item.municipality.state}
+						</Text>
+					</View>
+
+					<View className="flex-row items-center gap-1">
+						<CalendarDays size={14} color="#6B7280" />
+						<Text className="text-xs text-gray-500">
+							Oferta em {formatOfferDate(item.dates.offer_date)}
 						</Text>
 					</View>
 
