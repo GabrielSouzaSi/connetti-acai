@@ -14,8 +14,6 @@ import { router, useLocalSearchParams } from "expo-router"
 import {
 	CalendarClock,
 	Check,
-	ChevronDown,
-	ChevronUp,
 	Hash,
 	MapPin,
 	Package,
@@ -28,7 +26,17 @@ import {
 	X,
 } from "lucide-react-native"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ActivityIndicator, Keyboard, Modal, Platform, Pressable, Text, TextInput, View } from "react-native"
+import {
+	ActivityIndicator,
+	Keyboard,
+	Modal,
+	Platform,
+	Pressable,
+	ScrollView,
+	Text,
+	TextInput,
+	View,
+} from "react-native"
 import { KeyboardAwareScrollView, KeyboardProvider } from "react-native-keyboard-controller"
 import Toast from "react-native-toast-message"
 
@@ -90,6 +98,16 @@ const unitOptions = [
 	{ label: "Lata", value: "lata" },
 	{ label: "Tela", value: "tela" },
 ]
+
+function getMessages(response: any) {
+	const data = response?.data?.data
+	if (Array.isArray(data)) return data
+	if (Array.isArray(data?.data)) return data.data
+	if (Array.isArray(data?.messages)) return data.messages
+	if (Array.isArray(response?.data?.messages)) return response.data.messages
+	if (Array.isArray(response?.data)) return response.data
+	return []
+}
 
 export default function NegotiationScreen() {
 	const params = useLocalSearchParams<{
@@ -181,14 +199,19 @@ export default function NegotiationScreen() {
 	)
 	const offerStatus = displayedOffer.status
 
+	// console.log(amOwner, amBuyer)
+
 	const refreshConversation = useCallback(
 		async (showLoading = false) => {
 			if (!negotiationId) return
 
 			try {
 				if (showLoading) setRefreshingMessages(true)
-				const response = await negotiationsApi.list()
-				const data = response?.data?.data
+				const [negotiationsResponse, messagesResponse] = await Promise.all([
+					negotiationsApi.list(),
+					negotiationsApi.listMessages(negotiationId),
+				])
+				const data = negotiationsResponse?.data?.data
 				const items = Array.isArray(data)
 					? data
 					: Array.isArray(data?.data)
@@ -197,10 +220,8 @@ export default function NegotiationScreen() {
 				const updated = items.find(
 					(item: Record<string, any>) => getNegotiationId(item) === negotiationId,
 				)
-				if (!updated) return
-
-				setNegotiation((current) => ({ ...current, ...updated }))
-				if (Array.isArray(updated.messages)) setLocalMessages(updated.messages)
+				if (updated) setNegotiation((current) => ({ ...current, ...updated }))
+				setLocalMessages(getMessages(messagesResponse))
 			} catch (error: any) {
 				if (showLoading) {
 					Toast.show({
@@ -217,9 +238,10 @@ export default function NegotiationScreen() {
 	)
 
 	useEffect(() => {
-		if (!isCreated || isClosed) return
+		if (!isCreated) return
 
 		void refreshConversation()
+		if (isClosed) return
 		const interval = setInterval(() => void refreshConversation(), 10000)
 		return () => clearInterval(interval)
 	}, [isClosed, isCreated, refreshConversation])
@@ -301,7 +323,7 @@ export default function NegotiationScreen() {
 
 	async function sendMessage() {
 		const text = message.trim()
-		if (!text || !negotiationId || isCancelled) return
+		if (!text || !negotiationId || !isAccepted) return
 		const response = await run("Mensagem", () =>
 			negotiationsApi.sendMessage(negotiationId, text),
 		)
@@ -335,7 +357,11 @@ export default function NegotiationScreen() {
 	function typeNumericKey(key: string) {
 		if (numericField === "price") {
 			if (key === "decimal") return
-			setPrice((current) => key === "backspace" ? current.slice(0, -1) : `${current}${key}`.replace(/^0+(?=\d)/, ""))
+			setPrice((current) =>
+				key === "backspace"
+					? current.slice(0, -1)
+					: `${current}${key}`.replace(/^0+(?=\d)/, ""),
+			)
 			return
 		}
 
@@ -358,11 +384,139 @@ export default function NegotiationScreen() {
 						: `Oferta #${displayedOffer.id ?? offer?.id}`
 				}
 				showBack
-			/>
+			>
+				{canAct && (canReview || canComplete || canCancel) ? (
+					<View className="flex-row gap-2">
+						{canReview ? (
+							<>
+								<Pressable
+									onPress={() =>
+										updateStatus("Aceite", "accepted", () =>
+											negotiationsApi.accept(negotiationId),
+										)
+									}
+									disabled={submitting}
+									className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-green-600 px-3 py-2.5"
+								>
+									<Check size={16} color="#fff" />
+									<Text className="font-semibold text-white">Aceitar</Text>
+								</Pressable>
+								<Pressable
+									onPress={() =>
+										updateStatus("Recusa", "rejected", () =>
+											negotiationsApi.reject(negotiationId),
+										)
+									}
+									disabled={submitting}
+									className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-red-600 px-3 py-2.5"
+								>
+									<X size={16} color="#fff" />
+									<Text className="font-semibold text-white">Recusar</Text>
+								</Pressable>
+							</>
+						) : null}
+						{canComplete ? (
+							<Pressable
+								onPress={() =>
+									updateStatus("Conclusão", "completed", () =>
+										negotiationsApi.complete(negotiationId),
+									)
+								}
+								disabled={submitting}
+								className="flex-1 rounded-xl bg-blue-600 px-3 py-2.5"
+							>
+								<Text className="text-center font-semibold text-white">
+									Concluir
+								</Text>
+							</Pressable>
+						) : null}
+						{canCancel ? (
+							<Pressable
+								onPress={cancelNegotiation}
+								disabled={submitting}
+								className="flex-1 rounded-xl border border-red-300 bg-white/10 px-3 py-2.5"
+							>
+								<Text className="text-center font-semibold text-white">
+									Cancelar proposta
+								</Text>
+							</Pressable>
+						) : null}
+					</View>
+				) : null}
+			</Header>
+			{/* <Header
+				title={isCreated ? (counterpartName ?? "Negociação") : "Enviar proposta"}
+				subtitle={
+					isCreated
+						? `Negociação #${negotiationId ?? "—"} · Oferta #${displayedOffer.id ?? "—"}`
+						: `Oferta #${displayedOffer.id ?? offer?.id}`
+				}
+				showBack
+			>
+				{canAct && (canReview || canComplete || canCancel) ? (
+					<View className="flex-row gap-2">
+						{canReview ? (
+							<>
+								<Pressable
+									onPress={() =>
+										updateStatus("Aceite", "accepted", () =>
+											negotiationsApi.accept(negotiationId),
+										)
+									}
+									disabled={submitting}
+									className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-green-600 px-3 py-2.5"
+								>
+									<Check size={16} color="#fff" />
+									<Text className="font-semibold text-white">Aceitar</Text>
+								</Pressable>
+								<Pressable
+									onPress={() =>
+										updateStatus("Recusa", "rejected", () =>
+											negotiationsApi.reject(negotiationId),
+										)
+									}
+									disabled={submitting}
+									className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-red-600 px-3 py-2.5"
+								>
+									<X size={16} color="#fff" />
+									<Text className="font-semibold text-white">Recusar</Text>
+								</Pressable>
+							</>
+						) : null}
+						{canComplete ? (
+							<Pressable
+								onPress={() =>
+									updateStatus("Conclusão", "completed", () =>
+										negotiationsApi.complete(negotiationId),
+									)
+								}
+								disabled={submitting}
+								className="flex-1 rounded-xl bg-blue-600 px-3 py-2.5"
+							>
+								<Text className="text-center font-semibold text-white">
+									Concluir
+								</Text>
+							</Pressable>
+						) : null}
+						{canCancel ? (
+							<Pressable
+								onPress={cancelNegotiation}
+								disabled={submitting}
+								className="flex-1 rounded-xl border border-red-300 bg-white/10 px-3 py-2.5"
+							>
+								<Text className="text-center font-semibold text-white">
+									Cancelar proposta
+								</Text>
+							</Pressable>
+						) : null}
+					</View>
+				) : null}
+				<Profile plan={false} assessment={false} />
+			</Header> */}
 
 			<KeyboardProvider>
 				<KeyboardAwareScrollView
-					className="flex-1 rounded-t-3xl bg-gray-50"
+					className="flex-1 bg-gray-50"
 					contentContainerClassName="p-4 pb-24"
 					bottomOffset={24}
 					disableScrollOnKeyboardHide
@@ -370,6 +524,48 @@ export default function NegotiationScreen() {
 					keyboardShouldPersistTaps="handled"
 					showsVerticalScrollIndicator={false}
 				>
+					<View className="my-4 rounded-2xl border border-purple-200 bg-purple-50 p-4">
+						<View className="flex-row items-start justify-between gap-3">
+							<View className="flex-1">
+								<Text className="text-xs font-bold uppercase text-purple-700">
+									{amOwner ? "Proposta recebida" : "Sua proposta"}
+								</Text>
+								<Text className="mt-1 text-2xl font-bold text-purple-950">
+									{Number.isFinite(displayedPrice)
+										? `R$ ${displayedPrice.toFixed(2).replace(".", ",")} / ${displayedUnit ?? "unidade"}`
+										: "Preço não informado"}
+								</Text>
+								<Text className="mt-1 text-sm font-semibold text-purple-800">
+									Quantidade: {displayedVolume ?? "—"} {displayedUnit ?? ""}
+								</Text>
+							</View>
+							<View className="rounded-full bg-white px-3 py-1">
+								<Text className="text-xs font-bold text-purple-700">
+									{status == "accepted"
+										? "Aceito"
+										: status == "rejected"
+											? "Rejeitado"
+											: "Pendente"}
+								</Text>
+							</View>
+						</View>
+						{proposalDate ? (
+							<View className="mt-3 flex-row items-center gap-1">
+								<CalendarClock size={13} color="#7E22CE" />
+								<Text className="text-xs text-purple-700">
+									Enviada em {proposalDate}
+								</Text>
+							</View>
+						) : null}
+						{offerPrice &&
+						Number.isFinite(displayedPrice) &&
+						Number(displayedOffer.price) !== displayedPrice ? (
+							<Text className="mt-2 text-xs text-purple-700">
+								Oferta original: {offerPrice} por {String(offerUnit ?? "unidade")}.
+							</Text>
+						) : null}
+					</View>
+
 					<View className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
 						<View className="flex-row items-center justify-between gap-3">
 							<Text className="text-xs text-gray-500">
@@ -399,232 +595,273 @@ export default function NegotiationScreen() {
 							</View>
 						) : null}
 						<Pressable
-							onPress={() => setShowOfferDetails((current) => !current)}
+							onPress={() => setShowOfferDetails(true)}
 							className="mt-3 flex-row items-center justify-center gap-1 border-t border-gray-100 pt-3"
 						>
+							<Tag size={16} color="#7E22CE" />
 							<Text className="text-sm font-semibold text-purple-700">
-								{showOfferDetails
-									? "Ocultar detalhes da oferta"
-									: "Ver detalhes da oferta"}
+								Ver detalhes
 							</Text>
-							{showOfferDetails ? (
-								<ChevronUp size={17} color="#7E22CE" />
-							) : (
-								<ChevronDown size={17} color="#7E22CE" />
-							)}
 						</Pressable>
 					</View>
 
 					{showOfferDetails ? (
-						<>
-							<View className="mt-3 rounded-2xl border border-gray-200 bg-white p-4">
-								<View className="flex-row items-center gap-2">
-									<Tag size={18} color="#512B76" />
-									<Text className="text-base font-bold text-gray-900">
-										Dados da oferta original
-									</Text>
-								</View>
-
-								<View className="mt-4 flex-row gap-3">
-									<View className="flex-1 rounded-xl bg-purple-50 p-3">
-										<Text className="text-xs text-purple-700">
-											Preço anunciado
-										</Text>
-										<Text className="mt-1 text-lg font-bold text-purple-950">
-											{offerPrice ?? "Não informado"}
-										</Text>
-										{offerUnit ? (
-											<Text className="text-xs text-purple-700">
-												por {String(offerUnit)}
+						<Modal
+							visible
+							transparent
+							animationType="slide"
+							onRequestClose={() => setShowOfferDetails(false)}
+						>
+							<View className="flex-1 justify-end bg-black/50">
+								<Pressable
+									className="flex-1"
+									onPress={() => setShowOfferDetails(false)}
+									accessibilityLabel="Fechar detalhes da oferta"
+								/>
+								<View className="max-h-[90%] rounded-t-3xl bg-gray-50 px-4 pb-8 pt-4">
+									<View className="mb-2 flex-row items-center justify-between px-1">
+										<View>
+											<Text className="text-xs font-semibold uppercase text-purple-700">
+												Oferta #{displayedOffer.id ?? offer?.id ?? "—"}
 											</Text>
-										) : null}
-									</View>
-									<View className="flex-1 rounded-xl bg-green-50 p-3">
-										<Text className="text-xs text-green-700">
-											Quantidade anunciada
-										</Text>
-										<Text className="mt-1 text-lg font-bold text-green-800">
-											{offerVolume ?? "—"} {offerUnit ?? ""}
-										</Text>
-									</View>
-								</View>
-
-								{offerKg || offerLata || offerTela ? (
-									<View className="mt-3 rounded-xl bg-gray-50 p-3">
-										<View className="mb-2 flex-row items-center gap-2">
-											<Scale size={15} color="#4B5563" />
-											<Text className="text-xs font-semibold uppercase text-gray-600">
-												Equivalência
+											<Text className="mt-1 text-xl font-bold text-gray-900">
+												Detalhes da negociação
 											</Text>
 										</View>
-										<View className="flex-row">
-											<View className="flex-1">
-												<Text className="text-xs text-gray-500">
-													Quilogramas
-												</Text>
-												<Text className="mt-1 font-bold text-gray-800">
-													{offerKg ? `${offerKg} kg` : "—"}
-												</Text>
-											</View>
-											<View className="flex-1 items-center border-x border-gray-200">
-												<Text className="text-xs text-gray-500">Latas</Text>
-												<Text className="mt-1 font-bold text-gray-800">
-													{offerLata ?? "—"}
-												</Text>
-											</View>
-											<View className="flex-1 items-end">
-												<Text className="text-xs text-gray-500">Telas</Text>
-												<Text className="mt-1 font-bold text-gray-800">
-													{offerTela ?? "—"}
+										<Pressable
+											onPress={() => setShowOfferDetails(false)}
+											className="h-10 w-10 items-center justify-center rounded-full bg-gray-200"
+											accessibilityLabel="Fechar"
+										>
+											<X size={20} color="#374151" />
+										</Pressable>
+									</View>
+									<ScrollView
+										showsVerticalScrollIndicator={false}
+										contentContainerClassName="pb-4"
+									>
+										<View className="mt-3 rounded-2xl border border-gray-200 bg-white p-4">
+											<View className="flex-row items-center gap-2">
+												<Tag size={18} color="#512B76" />
+												<Text className="text-base font-bold text-gray-900">
+													Dados da oferta original
 												</Text>
 											</View>
-										</View>
-									</View>
-								) : null}
 
-								{offerOwner?.name ? (
-									<View className="mt-4 flex-row items-center gap-2">
-										<Package size={16} color="#6B7280" />
-										<Text className="text-sm text-gray-700">
-											{saleOffer ? "Produtor/vendedor" : "Responsável"}:{" "}
-											<Text className="font-semibold">{offerOwner.name}</Text>
-										</Text>
-									</View>
-								) : null}
-								{offerMunicipality ? (
-									<View className="mt-3 flex-row items-center gap-2">
-										<MapPin size={16} color="#6B7280" />
-										<Text className="text-sm text-gray-700">
-											{offerMunicipality}
-											{offerState ? ` - ${offerState}` : ""}
-										</Text>
-									</View>
-								) : null}
-								{offerPublishedAt ? (
-									<View className="mt-3 flex-row items-center gap-2">
-										<CalendarClock size={16} color="#6B7280" />
-										<Text className="text-sm text-gray-700">
-											Publicada em {offerPublishedAt}
-										</Text>
-									</View>
-								) : null}
-								{offerExpiresAt ? (
-									<View className="mt-3 flex-row items-center gap-2">
-										<CalendarClock size={16} color="#6B7280" />
-										<Text className="text-sm text-gray-700">
-											Válida até {offerExpiresAt}
-										</Text>
-									</View>
-								) : null}
-								{offerStatus ? (
-									<View className="mt-3 self-start rounded-full bg-gray-100 px-3 py-1">
-										<Text className="text-xs font-semibold text-gray-700">
-											Situação da oferta: {String(offerStatus)}
-										</Text>
-									</View>
-								) : null}
-							</View>
+											<View className="mt-4 flex-row gap-3">
+												<View className="flex-1 rounded-xl bg-purple-50 p-3">
+													<Text className="text-xs text-purple-700">
+														Preço anunciado
+													</Text>
+													<Text className="mt-1 text-lg font-bold text-purple-950">
+														{offerPrice ?? "Não informado"}
+													</Text>
+													{offerUnit ? (
+														<Text className="text-xs text-purple-700">
+															por {String(offerUnit)}
+														</Text>
+													) : null}
+												</View>
+												<View className="flex-1 rounded-xl bg-green-50 p-3">
+													<Text className="text-xs text-green-700">
+														Quantidade anunciada
+													</Text>
+													<Text className="mt-1 text-lg font-bold text-green-800">
+														{offerVolume ?? "—"} {offerUnit ?? ""}
+													</Text>
+												</View>
+											</View>
 
-							{isCreated ? (
-								<View className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 p-4">
-									<Text className="text-xs font-semibold uppercase text-purple-700">
-										Seu papel nesta negociação
-									</Text>
-									<Text className="mt-1 text-lg font-bold text-purple-950">
-										{myRoleLabel}
-									</Text>
-									<Text className="mt-1 text-sm text-purple-800">
-										{amOwner
-											? isPending
-												? "Você recebeu esta proposta e pode aceitar ou recusar."
-												: isAccepted
-													? "A proposta foi aceita. Você pode concluir a negociação."
-													: "Esta negociação não permite novas decisões."
-											: isPending
-												? "Você enviou esta proposta. Aguarde a decisão do produtor ou cancele a proposta."
-												: isAccepted
-													? "O produtor aceitou sua proposta."
-													: "Acompanhe aqui o resultado da sua proposta."}
-									</Text>
-									{counterpartName ? (
-										<Text className="mt-2 text-xs text-purple-600">
-											Negociando com: {counterpartName}
-										</Text>
-									) : null}
-								</View>
-							) : null}
+											{offerKg || offerLata || offerTela ? (
+												<View className="mt-3 rounded-xl bg-gray-50 p-3">
+													<View className="mb-2 flex-row items-center gap-2">
+														<Scale size={15} color="#4B5563" />
+														<Text className="text-xs font-semibold uppercase text-gray-600">
+															Equivalência
+														</Text>
+													</View>
+													<View className="flex-row">
+														<View className="flex-1">
+															<Text className="text-xs text-gray-500">
+																Quilogramas
+															</Text>
+															<Text className="mt-1 font-bold text-gray-800">
+																{offerKg ? `${offerKg} kg` : "—"}
+															</Text>
+														</View>
+														<View className="flex-1 items-center border-x border-gray-200">
+															<Text className="text-xs text-gray-500">
+																Latas
+															</Text>
+															<Text className="mt-1 font-bold text-gray-800">
+																{offerLata ?? "—"}
+															</Text>
+														</View>
+														<View className="flex-1 items-end">
+															<Text className="text-xs text-gray-500">
+																Telas
+															</Text>
+															<Text className="mt-1 font-bold text-gray-800">
+																{offerTela ?? "—"}
+															</Text>
+														</View>
+													</View>
+												</View>
+											) : null}
 
-							{isCreated && proposer ? (
-								<View className="mt-4 rounded-2xl border border-gray-200 bg-white p-4">
-									<View className="flex-row items-center gap-3">
-										<View className="h-11 w-11 items-center justify-center rounded-full bg-green-100">
-											<UserRound size={22} color="#15803D" />
-										</View>
-										<View className="flex-1">
-											<Text className="text-xs font-semibold uppercase text-green-700">
-												Quem fez a proposta · comprador
-											</Text>
-											<Text className="mt-1 text-lg font-bold text-gray-900">
-												{proposer.name ?? "Comprador"}
-											</Text>
-											{Number(proposer.id ?? proposer.user_id) ===
-											currentUserId ? (
-												<Text className="mt-1 self-start rounded-full bg-purple-100 px-2 py-0.5 text-xs font-bold text-purple-800">
-													Você
-												</Text>
+											{offerOwner?.name ? (
+												<View className="mt-4 flex-row items-center gap-2">
+													<Package size={16} color="#6B7280" />
+													<Text className="text-sm text-gray-700">
+														{saleOffer
+															? "Produtor/vendedor"
+															: "Responsável"}
+														:{" "}
+														<Text className="font-semibold">
+															{offerOwner.name}
+														</Text>
+													</Text>
+												</View>
+											) : null}
+											{offerMunicipality ? (
+												<View className="mt-3 flex-row items-center gap-2">
+													<MapPin size={16} color="#6B7280" />
+													<Text className="text-sm text-gray-700">
+														{offerMunicipality}
+														{offerState ? ` - ${offerState}` : ""}
+													</Text>
+												</View>
+											) : null}
+											{offerPublishedAt ? (
+												<View className="mt-3 flex-row items-center gap-2">
+													<CalendarClock size={16} color="#6B7280" />
+													<Text className="text-sm text-gray-700">
+														Publicada em {offerPublishedAt}
+													</Text>
+												</View>
+											) : null}
+											{offerExpiresAt ? (
+												<View className="mt-3 flex-row items-center gap-2">
+													<CalendarClock size={16} color="#6B7280" />
+													<Text className="text-sm text-gray-700">
+														Válida até {offerExpiresAt}
+													</Text>
+												</View>
+											) : null}
+											{offerStatus ? (
+												<View className="mt-3 self-start rounded-full bg-gray-100 px-3 py-1">
+													<Text className="text-xs font-semibold text-gray-700">
+														Situação da oferta: {String(offerStatus)}
+													</Text>
+												</View>
 											) : null}
 										</View>
-									</View>
 
-									{proposerPhone ? (
-										<View className="mt-4 flex-row items-center gap-2">
-											<Phone size={16} color="#6B7280" />
-											<Text className="text-sm text-gray-700">
-												{proposerPhone}
-											</Text>
-										</View>
-									) : null}
-									{proposalDate ? (
-										<View className="mt-3 flex-row items-center gap-2">
-											<CalendarClock size={16} color="#6B7280" />
-											<Text className="text-sm text-gray-700">
-												Proposta enviada em {proposalDate}
-											</Text>
-										</View>
-									) : null}
-									{proposerMunicipality || proposerLocality ? (
-										<View className="mt-3 flex-row items-start gap-2">
-											<MapPin size={16} color="#6B7280" />
-											<View className="flex-1">
-												{proposerMunicipality ? (
-													<Text className="text-sm text-gray-700">
-														{proposerMunicipality}
-														{proposerState ? ` - ${proposerState}` : ""}
-													</Text>
-												) : null}
-												{proposerLocality ? (
-													<Text className="mt-0.5 text-xs text-gray-500">
-														Localidade: {proposerLocality}
-													</Text>
-												) : null}
-												{proposer.community ? (
-													<Text className="mt-0.5 text-xs text-gray-500">
-														Comunidade: {proposer.community}
+										{isCreated ? (
+											<View className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 p-4">
+												<Text className="text-xs font-semibold uppercase text-purple-700">
+													Seu papel nesta negociação
+												</Text>
+												<Text className="mt-1 text-lg font-bold text-purple-950">
+													{myRoleLabel}
+												</Text>
+												<Text className="mt-1 text-sm text-purple-800">
+													{amOwner
+														? isPending
+															? "Você recebeu esta proposta e pode aceitar ou recusar."
+															: isAccepted
+																? "A proposta foi aceita. Você pode concluir a negociação."
+																: "Esta negociação não permite novas decisões."
+														: isPending
+															? "Você enviou esta proposta. Aguarde a decisão do produtor ou cancele a proposta."
+															: isAccepted
+																? "O produtor aceitou sua proposta."
+																: "Acompanhe aqui o resultado da sua proposta."}
+												</Text>
+												{counterpartName ? (
+													<Text className="mt-2 text-xs text-purple-600">
+														Negociando com: {counterpartName}
 													</Text>
 												) : null}
 											</View>
-										</View>
-									) : proposer.community ? (
-										<View className="mt-3 flex-row items-center gap-2">
-											<MapPin size={16} color="#6B7280" />
-											<Text className="text-sm text-gray-700">
-												Comunidade: {proposer.community}
-											</Text>
-										</View>
-									) : null}
+										) : null}
+
+										{isCreated && proposer ? (
+											<View className="mt-4 rounded-2xl border border-gray-200 bg-white p-4">
+												<View className="flex-row items-center gap-3">
+													<View className="h-11 w-11 items-center justify-center rounded-full bg-green-100">
+														<UserRound size={22} color="#15803D" />
+													</View>
+													<View className="flex-1">
+														<Text className="text-xs font-semibold uppercase text-green-700">
+															Quem fez a proposta · comprador
+														</Text>
+														<Text className="mt-1 text-lg font-bold text-gray-900">
+															{proposer.name ?? "Comprador"}
+														</Text>
+														{Number(proposer.id ?? proposer.user_id) ===
+														currentUserId ? (
+															<Text className="mt-1 self-start rounded-full bg-purple-100 px-2 py-0.5 text-xs font-bold text-purple-800">
+																Você
+															</Text>
+														) : null}
+													</View>
+												</View>
+
+												{proposerPhone ? (
+													<View className="mt-4 flex-row items-center gap-2">
+														<Phone size={16} color="#6B7280" />
+														<Text className="text-sm text-gray-700">
+															{proposerPhone}
+														</Text>
+													</View>
+												) : null}
+												{proposalDate ? (
+													<View className="mt-3 flex-row items-center gap-2">
+														<CalendarClock size={16} color="#6B7280" />
+														<Text className="text-sm text-gray-700">
+															Proposta enviada em {proposalDate}
+														</Text>
+													</View>
+												) : null}
+												{proposerMunicipality || proposerLocality ? (
+													<View className="mt-3 flex-row items-start gap-2">
+														<MapPin size={16} color="#6B7280" />
+														<View className="flex-1">
+															{proposerMunicipality ? (
+																<Text className="text-sm text-gray-700">
+																	{proposerMunicipality}
+																	{proposerState
+																		? ` - ${proposerState}`
+																		: ""}
+																</Text>
+															) : null}
+															{proposerLocality ? (
+																<Text className="mt-0.5 text-xs text-gray-500">
+																	Localidade: {proposerLocality}
+																</Text>
+															) : null}
+															{proposer.community ? (
+																<Text className="mt-0.5 text-xs text-gray-500">
+																	Comunidade: {proposer.community}
+																</Text>
+															) : null}
+														</View>
+													</View>
+												) : proposer.community ? (
+													<View className="mt-3 flex-row items-center gap-2">
+														<MapPin size={16} color="#6B7280" />
+														<Text className="text-sm text-gray-700">
+															Comunidade: {proposer.community}
+														</Text>
+													</View>
+												) : null}
+											</View>
+										) : null}
+									</ScrollView>
 								</View>
-							) : null}
-						</>
+							</View>
+						</Modal>
 					) : null}
 
 					{isCancelled ? (
@@ -652,15 +889,23 @@ export default function NegotiationScreen() {
 							</View>
 							<View>
 								<Text className="mb-2 text-gray-700">Preço proposto</Text>
-								<Pressable onPress={() => openNumericField("price")} className="flex-row items-center rounded-xl border border-gray-300 px-4 py-3">
+								<Pressable
+									onPress={() => openNumericField("price")}
+									className="flex-row items-center rounded-xl border border-gray-300 px-4 py-3"
+								>
 									<Text className="font-bold">R$</Text>
-									<Text className="flex-1 px-2 text-gray-900">{currencyInput(price)}</Text>
+									<Text className="flex-1 px-2 text-gray-900">
+										{currencyInput(price)}
+									</Text>
 								</Pressable>
 							</View>
 							<View className="flex-row gap-3">
 								<View className="flex-1">
 									<Text className="mb-2 text-gray-700">Volume</Text>
-									<Pressable onPress={() => openNumericField("volume")} className="rounded-xl border border-gray-300 px-4 py-3">
+									<Pressable
+										onPress={() => openNumericField("volume")}
+										className="rounded-xl border border-gray-300 px-4 py-3"
+									>
 										<Text className="text-gray-900">{volume || "0"}</Text>
 									</Pressable>
 								</View>
@@ -734,7 +979,13 @@ export default function NegotiationScreen() {
 									</Text>
 								</Pressable>
 							</View>
+
 							<View className="mt-3 gap-3">
+								{localMessages.length === 0 ? (
+									<Text className="py-4 text-center text-sm text-gray-500">
+										Nenhuma mensagem nesta conversa.
+									</Text>
+								) : null}
 								{localMessages.map((item, index) => {
 									const text = String(item.message ?? item.text ?? "")
 									const fromMe =
@@ -743,7 +994,7 @@ export default function NegotiationScreen() {
 									return (
 										<View
 											key={String(item.id ?? index)}
-											className={`max-w-[85%] rounded-2xl px-4 py-3 ${fromMe ? "self-end bg-purple-900" : "self-start bg-white"}`}
+											className={`max-w-[85%] rounded-2xl px-4 py-3 ${fromMe ? "self-end bg-purple-900" : "self-start bg-white border border-purple-500"} `}
 										>
 											<Text
 												className={fromMe ? "text-white" : "text-gray-800"}
@@ -755,131 +1006,30 @@ export default function NegotiationScreen() {
 								})}
 							</View>
 
-							<View className="mt-5 rounded-2xl border border-purple-200 bg-purple-50 p-4">
-								<View className="flex-row items-start justify-between gap-3">
-									<View className="flex-1">
-										<Text className="text-xs font-bold uppercase text-purple-700">
-											{amOwner ? "Proposta recebida" : "Sua proposta"}
-										</Text>
-										<Text className="mt-1 text-2xl font-bold text-purple-950">
-											{Number.isFinite(displayedPrice)
-												? `R$ ${displayedPrice.toFixed(2).replace(".", ",")} / ${displayedUnit ?? "unidade"}`
-												: "Preço não informado"}
-										</Text>
-										<Text className="mt-1 text-sm font-semibold text-purple-800">
-											Quantidade: {displayedVolume ?? "—"}{" "}
-											{displayedUnit ?? ""}
-										</Text>
-									</View>
-									<View className="rounded-full bg-white px-3 py-1">
-										<Text className="text-xs font-bold text-purple-700">
-											{status}
-										</Text>
-									</View>
-								</View>
-								{proposalDate ? (
-									<View className="mt-3 flex-row items-center gap-1">
-										<CalendarClock size={13} color="#7E22CE" />
-										<Text className="text-xs text-purple-700">
-											Enviada em {proposalDate}
-										</Text>
-									</View>
-								) : null}
-								{offerPrice &&
-								Number.isFinite(displayedPrice) &&
-								Number(displayedOffer.price) !== displayedPrice ? (
-									<Text className="mt-2 text-xs text-purple-700">
-										Oferta original: {offerPrice} por{" "}
-										{String(offerUnit ?? "unidade")}.
-									</Text>
-								) : null}
-							</View>
-
-							{canAct && (canReview || canComplete || canCancel) ? (
-								<View className="mt-4 flex-row flex-wrap gap-2">
-									{canReview ? (
-										<>
-											<Pressable
-												onPress={() =>
-													updateStatus("Aceite", "accepted", () =>
-														negotiationsApi.accept(negotiationId),
-													)
-												}
-												disabled={submitting}
-												className="min-w-[47%] flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-green-600 py-3"
-											>
-												<Check size={16} color="#fff" />
-												<Text className="font-semibold text-white">
-													Aceitar proposta
-												</Text>
-											</Pressable>
-											<Pressable
-												onPress={() =>
-													updateStatus("Recusa", "rejected", () =>
-														negotiationsApi.reject(negotiationId),
-													)
-												}
-												disabled={submitting}
-												className="min-w-[47%] flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-red-600 py-3"
-											>
-												<X size={16} color="#fff" />
-												<Text className="font-semibold text-white">
-													Recusar proposta
-												</Text>
-											</Pressable>
-										</>
-									) : null}
-									{canComplete ? (
-										<Pressable
-											onPress={() =>
-												updateStatus("Conclusão", "completed", () =>
-													negotiationsApi.complete(negotiationId),
-												)
-											}
-											disabled={submitting}
-											className="flex-1 rounded-xl bg-blue-600 py-3"
-										>
-											<Text className="text-center font-semibold text-white">
-												Concluir negociação
-											</Text>
-										</Pressable>
-									) : null}
-									{canCancel ? (
-										<Pressable
-											onPress={cancelNegotiation}
-											disabled={submitting}
-											className="flex-1 rounded-xl border border-red-400 bg-white py-3"
-										>
-											<Text className="text-center font-semibold text-red-600">
-												Cancelar minha proposta
-											</Text>
-										</Pressable>
-									) : null}
-								</View>
-							) : null}
-
 							<View
-								className={`mt-4 flex-row items-center gap-2 rounded-2xl border border-gray-200 p-2 ${isClosed ? "bg-gray-100" : "bg-white"}`}
+								className={`mt-4 flex-row items-center gap-2 rounded-2xl border border-gray-200 p-2 ${!isAccepted ? "bg-gray-100" : "bg-white"}`}
 							>
 								<TextInput
 									value={message}
 									onChangeText={setMessage}
 									placeholder={
-										isClosed ? "Negociação encerrada" : "Digite sua mensagem..."
+										isAccepted
+											? "Digite sua mensagem..."
+											: "Chat disponível após o aceite"
 									}
 									placeholderTextColor="#9CA3AF"
-									editable={!isClosed}
-									className={`flex-1 px-3 py-2 ${isClosed ? "text-gray-400" : "text-gray-900"}`}
+									editable={isAccepted}
+									className={`flex-1 px-3 py-2 ${!isAccepted ? "text-gray-400" : "text-gray-900"}`}
 								/>
 								<Pressable
 									onPress={sendMessage}
-									disabled={isClosed || !message.trim() || submitting}
-									className={`h-11 w-11 items-center justify-center rounded-full ${isClosed ? "bg-gray-300" : "bg-purple-900"}`}
+									disabled={!isAccepted || !message.trim() || submitting}
+									className={`h-11 w-11 items-center justify-center rounded-full ${!isAccepted ? "bg-gray-300" : "bg-purple-900"}`}
 								>
 									{submitting ? (
 										<ActivityIndicator color="#fff" />
 									) : (
-										<Send size={19} color={isClosed ? "#9CA3AF" : "#fff"} />
+										<Send size={19} color={!isAccepted ? "#9CA3AF" : "#fff"} />
 									)}
 								</Pressable>
 							</View>
@@ -888,33 +1038,69 @@ export default function NegotiationScreen() {
 				</KeyboardAwareScrollView>
 			</KeyboardProvider>
 
-			<Modal visible={numericField !== null} transparent animationType="slide" onRequestClose={() => setNumericField(null)}>
+			<Modal
+				visible={numericField !== null}
+				transparent
+				animationType="slide"
+				onRequestClose={() => setNumericField(null)}
+			>
 				<View className="flex-1 justify-end bg-black/40">
-					<Pressable className="flex-1" onPress={() => setNumericField(null)} accessibilityLabel="Fechar teclado numérico" />
+					<Pressable
+						className="flex-1"
+						onPress={() => setNumericField(null)}
+						accessibilityLabel="Fechar teclado numérico"
+					/>
 					<View className="rounded-t-3xl bg-gray-100 px-5 pb-8 pt-4">
 						<View className="mb-4 flex-row items-center justify-between">
 							<View>
-								<Text className="text-sm text-gray-500">{numericField === "price" ? "Preço proposto" : "Volume"}</Text>
-								<Text className="mt-1 text-2xl font-bold text-gray-900">{numericField === "price" ? `R$ ${currencyInput(price)}` : volume || "0"}</Text>
+								<Text className="text-sm text-gray-500">
+									{numericField === "price" ? "Preço proposto" : "Volume"}
+								</Text>
+								<Text className="mt-1 text-2xl font-bold text-gray-900">
+									{numericField === "price"
+										? `R$ ${currencyInput(price)}`
+										: volume || "0"}
+								</Text>
 							</View>
-							<Pressable onPress={() => setNumericField(null)} className="rounded-full bg-purple-900 px-5 py-3">
+							<Pressable
+								onPress={() => setNumericField(null)}
+								className="rounded-full bg-purple-900 px-5 py-3"
+							>
 								<Text className="font-bold text-white">Concluir</Text>
 							</Pressable>
 						</View>
 
 						<View className="flex-row flex-wrap gap-3">
 							{["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((key) => (
-								<Pressable key={key} onPress={() => typeNumericKey(key)} className="h-14 w-[30%] flex-grow items-center justify-center rounded-xl bg-white">
-									<Text className="text-2xl font-semibold text-gray-900">{key}</Text>
+								<Pressable
+									key={key}
+									onPress={() => typeNumericKey(key)}
+									className="h-14 w-[30%] flex-grow items-center justify-center rounded-xl bg-white"
+								>
+									<Text className="text-2xl font-semibold text-gray-900">
+										{key}
+									</Text>
 								</Pressable>
 							))}
-							<Pressable disabled={numericField === "price"} onPress={() => typeNumericKey("decimal")} className={`h-14 w-[30%] flex-grow items-center justify-center rounded-xl ${numericField === "price" ? "bg-gray-200" : "bg-white"}`}>
-								<Text className="text-2xl font-semibold text-gray-900">{numericField === "price" ? "" : ","}</Text>
+							<Pressable
+								disabled={numericField === "price"}
+								onPress={() => typeNumericKey("decimal")}
+								className={`h-14 w-[30%] flex-grow items-center justify-center rounded-xl ${numericField === "price" ? "bg-gray-200" : "bg-white"}`}
+							>
+								<Text className="text-2xl font-semibold text-gray-900">
+									{numericField === "price" ? "" : ","}
+								</Text>
 							</Pressable>
-							<Pressable onPress={() => typeNumericKey("0")} className="h-14 w-[30%] flex-grow items-center justify-center rounded-xl bg-white">
+							<Pressable
+								onPress={() => typeNumericKey("0")}
+								className="h-14 w-[30%] flex-grow items-center justify-center rounded-xl bg-white"
+							>
 								<Text className="text-2xl font-semibold text-gray-900">0</Text>
 							</Pressable>
-							<Pressable onPress={() => typeNumericKey("backspace")} className="h-14 w-[30%] flex-grow items-center justify-center rounded-xl bg-white">
+							<Pressable
+								onPress={() => typeNumericKey("backspace")}
+								className="h-14 w-[30%] flex-grow items-center justify-center rounded-xl bg-white"
+							>
 								<Text className="text-xl font-semibold text-gray-900">⌫</Text>
 							</Pressable>
 						</View>
