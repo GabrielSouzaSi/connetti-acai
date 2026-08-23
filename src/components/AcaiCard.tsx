@@ -1,6 +1,8 @@
 import { router } from "expo-router"
-import { CalendarDays, MapPin, Package, Star, TrendingUp } from "lucide-react-native"
-import { Image, Pressable, Text, useWindowDimensions, View } from "react-native"
+import { calculateOfferValues, formatOfferCurrency } from "@/utils/offerValues"
+import { CalendarDays, Crown, MapPin, Package, Star, TrendingUp, X } from "lucide-react-native"
+import { useState } from "react"
+import { Image, Modal, Pressable, Text, useWindowDimensions, View } from "react-native"
 
 export interface AcaiOffer {
 	id: number
@@ -59,6 +61,9 @@ export function AcaiCard({ item, image }: AcaiCardProps) {
 	const { width } = useWindowDimensions()
 	const isCompact = width < 480
 	const typeLabel = item.type === "sell" ? "Venda" : "Compra"
+	const pricePerKg =
+		calculateOfferValues(item.volume.original, item.volume.unit, item.price)?.kg.unitPrice ??
+		item.price
 
 	const statusLabel =
 		item.status === "active"
@@ -115,17 +120,21 @@ export function AcaiCard({ item, image }: AcaiCardProps) {
 									adjustsFontSizeToFit
 									className="text-2xl font-bold text-violet-700"
 								>
-									R$ {item.price.toFixed(2).replace(".", ",")}
+									{formatOfferCurrency(pricePerKg)}
 								</Text>
-								<Text className="text-xs text-gray-400">/ {item.volume.unit}</Text>
+								<Text className="text-xs text-gray-400">/ kg</Text>
 							</View>
 
 							<View className="items-end">
 								<View className="flex-row items-center gap-1">
 									<TrendingUp size={13} color="#16A34A" />
-									<Text className="text-xs font-semibold text-green-600">{item.volume.lata} latas</Text>
+									<Text className="text-xs font-semibold text-green-600">
+										{item.volume.lata} latas
+									</Text>
 								</View>
-								<Text className="text-[10px] text-gray-400">{item.volume.tela} telas</Text>
+								<Text className="text-[10px] text-gray-400">
+									{item.volume.tela} telas
+								</Text>
 							</View>
 						</View>
 					</View>
@@ -143,10 +152,15 @@ export function AcaiCard({ item, image }: AcaiCardProps) {
 				<View className="mt-3 flex-row items-center justify-between gap-3">
 					<View className="min-w-0 flex-1 flex-row items-center gap-1">
 						<Star size={14} fill="#FACC15" color="#FACC15" />
-						<Text numberOfLines={1} className="flex-1 text-xs text-gray-500">{item.user.name}</Text>
+						<Text numberOfLines={1} className="flex-1 text-xs text-gray-500">
+							{item.user.name}
+						</Text>
 					</View>
 
-					<Pressable onPress={openDetails} className="rounded-xl border border-green-300 bg-green-100 px-4 py-2">
+					<Pressable
+						onPress={openDetails}
+						className="rounded-xl border border-green-300 bg-green-100 px-4 py-2"
+					>
 						<Text className="text-sm font-semibold text-green-700">Ver detalhes</Text>
 					</Pressable>
 				</View>
@@ -206,10 +220,10 @@ export function AcaiCard({ item, image }: AcaiCardProps) {
 			<View className="justify-between items-end">
 				<View className="items-end">
 					<Text className="text-2xl font-bold text-violet-700">
-						R$ {item.price.toFixed(2).replace(".", ",")}
+						{formatOfferCurrency(pricePerKg)}
 					</Text>
 
-					<Text className="text-xs text-gray-400">/ {item.volume.unit}</Text>
+					<Text className="text-xs text-gray-400">/ kg</Text>
 
 					<View className="flex-row items-center gap-1 mt-2">
 						<TrendingUp size={14} color="#16A34A" />
@@ -230,5 +244,116 @@ export function AcaiCard({ item, image }: AcaiCardProps) {
 				</Pressable>
 			</View>
 		</View>
+	)
+}
+
+export function AcaiCardBasic({ item, image }: AcaiCardProps) {
+	const [upgradeModalVisible, setUpgradeModalVisible] = useState(false)
+	const pricePerKg =
+		calculateOfferValues(item.volume.original, item.volume.unit, item.price)?.kg.unitPrice ??
+		item.price
+
+	function openPlans() {
+		setUpgradeModalVisible(false)
+		router.push("/pages/plans")
+	}
+
+	return (
+		<>
+			<View className="mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+				<Image source={image} className="h-44 w-full" resizeMode="cover" />
+
+				<View className="p-4">
+					<View className="flex-row items-start gap-2">
+						<MapPin size={17} color="#7C3AED" />
+						<Text numberOfLines={2} className="min-w-0 flex-1 font-medium text-gray-700">
+							{item.municipality.name} - {item.municipality.state}
+						</Text>
+					</View>
+
+					<View className="mt-2 flex-row items-center gap-2">
+						<CalendarDays size={16} color="#6B7280" />
+						<Text className="text-sm text-gray-500">
+							Oferta em {formatOfferDate(item.dates.offer_date)}
+						</Text>
+					</View>
+
+					<View className="mt-4 flex-row items-end justify-between gap-4">
+						<View className="min-w-0 flex-1">
+							<Text className="text-xs font-medium uppercase tracking-wide text-gray-400">
+								Valor da oferta
+							</Text>
+							<Text
+								numberOfLines={1}
+								adjustsFontSizeToFit
+								className="text-2xl font-bold text-violet-700"
+							>
+								{formatOfferCurrency(pricePerKg)}
+							</Text>
+							<Text className="text-xs text-gray-400">/ kg</Text>
+						</View>
+
+						<Pressable
+							onPress={() => setUpgradeModalVisible(true)}
+							accessibilityRole="button"
+							accessibilityLabel="Ver detalhes da oferta"
+							className="rounded-xl border border-green-300 bg-green-100 px-4 py-3"
+						>
+							<Text className="text-sm font-semibold text-green-700">Ver detalhes</Text>
+						</Pressable>
+					</View>
+				</View>
+			</View>
+
+			<Modal
+				visible={upgradeModalVisible}
+				transparent
+				animationType="fade"
+				statusBarTranslucent
+				onRequestClose={() => setUpgradeModalVisible(false)}
+			>
+				<View className="flex-1 items-center justify-center bg-black/50 px-6">
+					<View className="w-full max-w-md rounded-3xl bg-white p-6">
+						<Pressable
+							onPress={() => setUpgradeModalVisible(false)}
+							accessibilityRole="button"
+							accessibilityLabel="Fechar"
+							className="absolute right-4 top-4 z-10 h-9 w-9 items-center justify-center rounded-full bg-gray-100"
+						>
+							<X size={19} color="#4B5563" />
+						</Pressable>
+
+						<View className="mb-4 h-14 w-14 items-center justify-center rounded-full bg-purple-100">
+							<Crown size={28} color="#512B76" />
+						</View>
+
+						<Text className="pr-8 text-xl font-bold text-gray-900">
+							Detalhes exclusivos para assinantes
+						</Text>
+						<Text className="mt-2 leading-5 text-gray-600">
+							Assine um de nossos planos para acessar os detalhes completos desta oferta e
+							outros recursos exclusivos.
+						</Text>
+
+						<Pressable
+							onPress={openPlans}
+							accessibilityRole="button"
+							className="mt-6 flex-row items-center justify-center gap-2 rounded-xl bg-purple-900 py-3.5"
+						>
+							<Crown size={18} color="#FFFFFF" />
+							<Text className="font-semibold text-white">Conhecer os planos</Text>
+						</Pressable>
+
+						<Pressable
+							onPress={() => setUpgradeModalVisible(false)}
+							accessibilityRole="button"
+							className="mt-3 items-center rounded-xl border border-gray-300 py-3.5"
+						>
+							<Text className="font-semibold text-gray-700">Agora não</Text>
+						</Pressable>
+					</View>
+				</View>
+			</Modal>
+		</>
 	)
 }

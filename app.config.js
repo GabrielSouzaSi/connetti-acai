@@ -4,6 +4,7 @@ export default () => ({
 	expo: {
 		name: "Connetti Açaí",
 		slug: "connetti-acai",
+		platforms: ["ios", "android"],
 		version: "1.0.0",
 		orientation: "portrait",
 		icon: "./assets/images/icon.png",
@@ -28,11 +29,6 @@ export default () => ({
 			edgeToEdgeEnabled: true,
 			predictiveBackGestureEnabled: false,
 			package: "com.gabrielsouza.collegaacai",
-		},
-		web: {
-			bundler: "metro",
-			output: "static",
-			favicon: "./assets/images/favicon.png",
 		},
 		plugins: [
 			"./plugins/withAndroidVersioning",

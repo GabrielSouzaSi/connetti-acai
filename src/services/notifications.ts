@@ -13,8 +13,6 @@ Notifications.setNotificationHandler({
 })
 
 export async function configureNotifications() {
-	if (Platform.OS === "web") return false
-
 	if (Platform.OS === "android") {
 		await Notifications.setNotificationChannelAsync(
 			DEFAULT_NOTIFICATION_CHANNEL,

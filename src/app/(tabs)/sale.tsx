@@ -1,4 +1,4 @@
-import { AcaiCard, AcaiOffer } from "@/components/AcaiCard"
+import { AcaiCard, AcaiCardBasic, AcaiOffer } from "@/components/AcaiCard"
 import {
 	filterOffers,
 	MunicipalityFilterOption,
@@ -21,6 +21,8 @@ export default function TabSaleScreen() {
 	const [typeFilter, setTypeFilter] = useState<OfferTypeFilter>("all")
 	const { canAccess } = useAccess()
 	const { user } = useAuth()
+	const activePlanSlug = user?.active_subscription?.plan.slug?.toLowerCase()
+	const hasPaidPlan = Boolean(activePlanSlug && !["free", "gratuito"].includes(activePlanSlug))
 	const params = useLocalSearchParams<{
 		municipalityId?: string
 		municipalityName?: string
@@ -192,7 +194,13 @@ export default function TabSaleScreen() {
 						</Pressable>
 					</View>
 				}
-				renderItem={({ item }) => <AcaiCard item={item} image={image} />}
+				renderItem={({ item }) =>
+					hasPaidPlan ? (
+						<AcaiCard item={item} image={image} />
+					) : (
+						<AcaiCardBasic item={item} image={image} />
+					)
+				}
 				ListEmptyComponent={
 					<View className="mt-24 items-center justify-center">
 						{loading ? (
