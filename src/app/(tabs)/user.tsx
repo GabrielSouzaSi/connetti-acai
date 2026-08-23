@@ -1,30 +1,35 @@
 import { Feature } from "@/auth/accessControl"
 import { Header } from "@/components/Header"
+import { Profile } from "@/components/Profile"
 import { useAccess } from "@/hooks/useAccess"
 import { useAuth } from "@/hooks/useAuth"
-import { router } from "expo-router"
+import { router, type Href } from "expo-router"
 import {
-	BadgeCheck,
 	Bell,
 	ChevronRight,
 	CreditCard,
 	HelpCircle,
 	LogOut,
-	MapPin,
 	MessageCircle,
 	ShieldCheck,
-	Star,
 	Tag,
 	User,
 } from "lucide-react-native"
 import React from "react"
-import { Image, Pressable, ScrollView, Text, View } from "react-native"
+import { Pressable, ScrollView, Text, View } from "react-native"
 
 type MenuOption = {
 	title: string
 	description: string
 	icon: typeof User
-	route?: "/pages/myOffers" | "/pages/plans" | "/pages/chat"
+	route?:
+		| "/pages/myOffers"
+		| "/pages/plans"
+		| "/pages/chat"
+		| "/pages/personalData"
+		| "/pages/verification"
+		| "/pages/notificationSettings"
+		| "/pages/helpSupport"
 	access?: Feature
 }
 
@@ -33,6 +38,7 @@ const options: readonly MenuOption[] = [
 		title: "Dados pessoais",
 		description: "Nome, telefone e informações da conta",
 		icon: User,
+		route: "/pages/personalData",
 	},
 	{
 		title: "Minhas ofertas",
@@ -45,6 +51,7 @@ const options: readonly MenuOption[] = [
 		title: "Verificação",
 		description: "Documentos e conta verificada",
 		icon: ShieldCheck,
+		route: "/pages/verification",
 	},
 	{
 		title: "Planos",
@@ -56,11 +63,13 @@ const options: readonly MenuOption[] = [
 		title: "Notificações",
 		description: "Preferências de avisos",
 		icon: Bell,
+		route: "/pages/notificationSettings",
 	},
 	{
 		title: "Ajuda e suporte",
 		description: "Central de atendimento",
 		icon: HelpCircle,
+		route: "/pages/helpSupport",
 	},
 	{
 		title: "Chat com suporte",
@@ -74,56 +83,13 @@ export default function TabUserScreen() {
 	const { user, signOut } = useAuth()
 	const { canAccess } = useAccess()
 	const visibleOptions = options.filter((option) => !option.access || canAccess(option.access))
+	const activeSubscription = user?.active_subscription ?? null
 
 	return (
 		<View className="flex-1 bg-white">
 			<Header title="Perfil" subtitle="Conta e preferências" />
 			<ScrollView showsVerticalScrollIndicator={false} className="flex-1 bg-gray-50">
-				<View className="px-5 pt-6 pb-6 bg-white">
-					<View className="flex-row items-center gap-4">
-						<Image
-							source={{
-								uri: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e",
-							}}
-							className="w-20 h-20 rounded-full"
-						/>
-
-						<View className="flex-1">
-							<Text className="text-xl font-bold text-gray-900">{user?.name}</Text>
-
-							<View className="flex-row items-center mt-1">
-								<MapPin size={16} color="#6B7280" />
-								<Text className="text-gray-500 ml-1">
-									{user?.municipality
-										? `${user.municipality.name} - ${user.municipality.state}`
-										: user?.community}
-								</Text>
-							</View>
-
-							<View className="flex-row items-center mt-1">
-								<BadgeCheck size={16} color="#22C55E" />
-								<Text className="text-green-600 ml-1 font-medium">
-									{user?.profile_label ?? "Perfil verificado"}
-								</Text>
-							</View>
-						</View>
-					</View>
-
-					<View className="flex-row items-center mt-5">
-						{Array.from({ length: 5 }).map((_, index) => (
-							<Star
-								key={index}
-								size={18}
-								color="#F59E0B"
-								fill="#F59E0B"
-								className="mr-1"
-							/>
-						))}
-
-						<Text className="text-gray-700 ml-2 font-semibold">4,8</Text>
-						<Text className="text-gray-500 ml-1">(128 avaliações)</Text>
-					</View>
-				</View>
+				<Profile plan assessment />
 
 				<View className="px-5 mt-5">
 					<Text className="text-gray-900 text-lg font-bold mb-3">Minha conta</Text>
@@ -137,8 +103,7 @@ export default function TabUserScreen() {
 									key={item.title}
 									onPress={() => {
 										if (item.route) {
-											// Navigate to the specified route
-											router.push(item.route)
+											router.push(item.route as Href)
 										}
 									}}
 									className={`flex-row items-center p-4 ${
@@ -156,7 +121,11 @@ export default function TabUserScreen() {
 											{item.title}
 										</Text>
 										<Text className="text-gray-500 text-sm mt-0.5">
-											{item.description}
+											{item.title === "Planos"
+												? activeSubscription
+													? `Plano atual: ${activeSubscription.plan.name}`
+													: "Sem plano ativo"
+												: item.description}
 										</Text>
 									</View>
 
