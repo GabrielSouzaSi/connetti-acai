@@ -18,6 +18,9 @@ export const colors = {
 	error: "#EF4444",
 	info: "#3B82F6",
 
+	connecttiGreen: "#0E4B22",
+	acaiPurple: "#3C0B51",
+
 	shadow: "rgba(0,0,0,0.1)",
 
 	gradientBrand: ["#32015D", "#2C9434"],
