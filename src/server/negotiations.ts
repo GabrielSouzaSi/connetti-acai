@@ -15,6 +15,7 @@ export const negotiationsApi = {
 	reject: (id: number) => server.patch(`/negotiations/${id}/reject`, {}),
 	complete: (id: number) => server.patch(`/negotiations/${id}/complete`, {}),
 	cancel: (id: number) => server.patch(`/negotiations/${id}/cancel`, {}),
+	listMessages: (id: number) => server.get(`/negotiations/${id}/messages`),
 	sendMessage: (id: number, message: string) =>
 		server.post(`/negotiations/${id}/messages`, { message }),
 	createPayment: (id: number) => server.post(`/negotiations/${id}/payments`, {}),
