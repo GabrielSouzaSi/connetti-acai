@@ -45,11 +45,12 @@ export default function TabMessageScreen() {
 	const { user } = useAuth()
 	const [items, setItems] = useState<Negotiation[]>([])
 	const [loading, setLoading] = useState(true)
+	const [refreshing, setRefreshing] = useState(false)
 	const [error, setError] = useState("")
 
-	const load = useCallback(async () => {
+	const load = useCallback(async (showLoading = true) => {
 		try {
-			setLoading(true)
+			if (showLoading) setLoading(true)
 			setError("")
 			const response = await negotiationsApi.list()
 			setItems(getItems(response))
@@ -60,9 +61,18 @@ export default function TabMessageScreen() {
 			})
 			setError(requestError?.response?.data?.message ?? "Não foi possível carregar as negociações.")
 		} finally {
-			setLoading(false)
+			if (showLoading) setLoading(false)
 		}
 	}, [])
+
+	const refreshNegotiations = useCallback(async () => {
+		setRefreshing(true)
+		try {
+			await load(false)
+		} finally {
+			setRefreshing(false)
+		}
+	}, [load])
 
 	useFocusEffect(useCallback(() => void load(), [load]))
 
@@ -77,7 +87,7 @@ export default function TabMessageScreen() {
 			) : error ? (
 				<View className="flex-1 items-center justify-center px-6">
 					<Text className="text-center text-red-600">{error}</Text>
-					<Pressable onPress={load} className="mt-4 flex-row items-center gap-2 rounded-xl bg-purple-900 px-5 py-3">
+					<Pressable onPress={() => void load()} className="mt-4 flex-row items-center gap-2 rounded-xl bg-purple-900 px-5 py-3">
 						<RefreshCw size={17} color="#fff" />
 						<Text className="font-semibold text-white">Tentar novamente</Text>
 					</Pressable>
@@ -85,6 +95,9 @@ export default function TabMessageScreen() {
 			) : (
 				<FlatList
 					data={items}
+					refreshing={refreshing}
+					onRefresh={refreshNegotiations}
+					progressViewOffset={12}
 					showsVerticalScrollIndicator={false}
 					keyExtractor={(item, index) => String(getNegotiationId(item) ?? index)}
 					contentContainerClassName="p-5 pb-12"
