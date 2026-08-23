@@ -1,4 +1,8 @@
 import { Header } from "@/components/Header"
+import { useAuth } from "@/hooks/useAuth"
+import { Plan, plansApi } from "@/server/plans"
+import axios from "axios"
+import { useRouter } from "expo-router"
 import {
 	BarChart3,
 	Check,
@@ -11,67 +15,99 @@ import {
 	Users,
 	Zap,
 } from "lucide-react-native"
-import React, { useState } from "react"
-import { Pressable, ScrollView, Text, View } from "react-native"
+import React, { useCallback, useEffect, useState } from "react"
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native"
+import Toast from "react-native-toast-message"
 
-const plans = [
-	{
-		id: "free",
-		name: "Gratuito",
-		price: "R$ 0/mês",
-		tag: "Patrocinado",
-		color: "purple",
-		icon: Megaphone,
-		features: [
-			"Publicidade controlada",
-			"Consulta básica",
-			"Alertas anônimos por município",
-			"1ª propaganda após 5 interações",
-		],
-	},
-	{
-		id: "pro",
-		name: "Pro",
-		price: "R$ 39,90/mês",
-		tag: "Mais popular",
-		color: "green",
-		icon: Zap,
-		features: [
-			"Sem anúncios",
-			"Alertas com identificação do cliente",
-			"Histórico completo",
-			"Filtros avançados",
-		],
-	},
-	{
-		id: "plus",
-		name: "Plus",
-		price: "R$ 89,90/mês",
-		tag: "Performance",
-		color: "purple",
-		icon: BarChart3,
-		features: ["Sem anúncios", "Relatórios", "Comparativos regionais", "Painel de desempenho"],
-	},
-	{
-		id: "institutional",
-		name: "Institucional",
-		price: "A partir de R$ 499/mês",
-		tag: "Gestão territorial",
-		color: "purple",
-		icon: Users,
-		features: [
-			"Sem anúncios",
-			"Dashboard territorial",
-			"Exportação de relatórios",
-			"Múltiplos usuários",
-		],
-	},
+const featureLabels: Array<[keyof Plan["features"], string]> = [
+	["has_basic_chat", "Chat básico"],
+	["has_simple_route", "Rota simplificada"],
+	["has_price_history", "Histórico de preços"],
+	["has_price_alerts", "Alertas de preços"],
+	["has_premium_map", "Mapa premium"],
+	["has_advanced_filters", "Filtros avançados"],
+	["has_reports", "Relatórios"],
+	["has_comparisons", "Comparativos regionais"],
+	["has_performance_metrics", "Painel de desempenho"],
+	["has_territorial_dashboard", "Dashboard territorial"],
+	["has_data_export", "Exportação de dados"],
+	["has_multiple_users", "Múltiplos usuários"],
 ]
 
-export default function PlansScreen() {
-	const [selectedPlan, setSelectedPlan] = useState("pro")
+function planFeatures(plan: Plan) {
+	const features = featureLabels.filter(([key]) => plan.features[key]).map(([, label]) => label)
+	if (plan.offer_limit !== null) features.unshift(`Até ${plan.offer_limit} ofertas`)
+	return features.slice(0, 4)
+}
 
-	const selected = plans.find((plan) => plan.id === selectedPlan)
+function planPrice(plan: Plan) {
+	return plan.monthly_price === 0
+		? "Grátis"
+		: `${plan.monthly_price.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mês`
+}
+
+function apiMessage(error: unknown) {
+	if (axios.isAxiosError(error)) {
+		return error.response?.data?.message ?? "Não foi possível concluir a operação."
+	}
+	return "Não foi possível concluir a operação."
+}
+
+export default function PlansScreen() {
+	const router = useRouter()
+	const { user } = useAuth()
+	const currentPlanId = user?.active_subscription?.plan.id ?? null
+	const [plans, setPlans] = useState<Plan[]>([])
+	const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null)
+	const [loading, setLoading] = useState(true)
+	const [refreshing, setRefreshing] = useState(false)
+	const [subscribing, setSubscribing] = useState(false)
+
+	const loadPlans = useCallback(async (refresh = false) => {
+		refresh ? setRefreshing(true) : setLoading(true)
+		try {
+			const availablePlans = await plansApi.list()
+			setPlans(availablePlans)
+			setSelectedPlanId((current) =>
+				availablePlans.some((plan) => plan.id === current)
+					? current
+					: (availablePlans.find((plan) => plan.id === currentPlanId) ??
+						availablePlans.find((plan) => plan.slug === "pro") ??
+						availablePlans[0])?.id ?? null,
+			)
+		} catch (error) {
+			Toast.show({ type: "error", text1: "Erro ao carregar planos", text2: apiMessage(error) })
+		} finally {
+			setLoading(false)
+			setRefreshing(false)
+		}
+	}, [currentPlanId])
+
+	useEffect(() => {
+		loadPlans()
+	}, [loadPlans])
+
+	const selected = plans.find((plan) => plan.id === selectedPlanId)
+	const isCurrentPlanSelected = selected?.id === currentPlanId
+
+	async function subscribe(plan: Plan | undefined) {
+		if (!plan || subscribing) return
+		setSubscribing(true)
+		try {
+			await plansApi.subscribe(
+				plan,
+				plan.monthly_price > 0
+					? { stripe_subscription_id: "sub_app_test_123", stripe_customer_id: "cus_app_test_123" }
+					: undefined,
+			)
+			Toast.show({ type: "success", text1: "Plano assinado", text2: `O plano ${plan.name} foi ativado com sucesso.` })
+			router.replace("/(tabs)/user")
+		} catch (error) {
+			Toast.show({ type: "error", text1: "Erro na assinatura", text2: apiMessage(error) })
+		} finally {
+			setSubscribing(false)
+		}
+	}
 
 	return (
 		<View className="flex-1 bg-white">
@@ -85,21 +121,28 @@ export default function PlansScreen() {
 				className="flex-1"
 				contentContainerClassName="px-5 pt-6 pb-8"
 				showsVerticalScrollIndicator={false}
+				refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadPlans(true)} />}
 			>
 				<Text className="text-3xl font-extrabold text-purple-900 text-center">
 					Escolha seu plano
 				</Text>
 
-				<View className="gap-3">
+				{loading ? (
+					<View className="h-48 items-center justify-center"><ActivityIndicator size="large" color="#512B76" /></View>
+				) : plans.length === 0 ? (
+					<View className="rounded-2xl border border-purple-100 bg-purple-50 p-6"><Text className="text-center text-purple-900 font-bold">Nenhum plano disponível no momento.</Text></View>
+				) : <View className="gap-3">
 					{plans.map((plan) => {
-						const isSelected = selectedPlan === plan.id
-						const Icon = plan.icon
-						const isGreen = plan.color === "green"
+						const isSelected = selectedPlanId === plan.id
+						const isCurrentPlan = currentPlanId === plan.id
+						const isGreen = plan.slug === "pro"
+						const Icon = plan.monthly_price === 0 ? Megaphone : plan.features.has_territorial_dashboard ? Users : plan.features.has_reports ? BarChart3 : Zap
+						const features = planFeatures(plan)
 
 						return (
 							<Pressable
 								key={plan.id}
-								onPress={() => setSelectedPlan(plan.id)}
+								onPress={() => setSelectedPlanId(plan.id)}
 								className={`rounded-2xl border p-4 overflow-hidden ${
 									isSelected
 										? "border-green-500 bg-green-50"
@@ -107,9 +150,9 @@ export default function PlansScreen() {
 								}`}
 							>
 								<View className="absolute right-2 bottom-1 opacity-10">
-									{plan.id === "institutional" ? (
+									{plan.features.has_territorial_dashboard ? (
 										<Map size={105} color="#512B76" />
-									) : plan.id === "plus" ? (
+									) : plan.features.has_reports ? (
 										<BarChart3 size={105} color="#512B76" />
 									) : (
 										<Sparkles
@@ -143,7 +186,7 @@ export default function PlansScreen() {
 													isGreen ? "text-green-700" : "text-purple-800"
 												}`}
 											>
-												{plan.price}
+												{planPrice(plan)}
 											</Text>
 										</View>
 									</View>
@@ -158,13 +201,13 @@ export default function PlansScreen() {
 												isGreen ? "text-white" : "text-purple-700"
 											}`}
 										>
-											{plan.tag}
+											{isCurrentPlan ? "Plano atual" : plan.monthly_price === 0 ? "Gratuito" : isGreen ? "Mais popular" : "Premium"}
 										</Text>
 									</View>
 								</View>
 
 								<View className="mt-3 gap-1.5">
-									{plan.features.map((feature) => (
+									{features.map((feature) => (
 										<View key={feature} className="flex-row items-center gap-2">
 											<ShieldCheck
 												size={13}
@@ -189,7 +232,7 @@ export default function PlansScreen() {
 							</Pressable>
 						)
 					})}
-				</View>
+				</View>}
 
 				<View className="mt-4 rounded-2xl bg-purple-50 border border-purple-100 p-4 flex-row gap-3">
 					<View className="w-8 h-8 rounded-full bg-white items-center justify-center">
@@ -203,18 +246,17 @@ export default function PlansScreen() {
 				</View>
 
 				<Pressable
-					onPress={() => {
-						console.log("Plano selecionado:", selected)
-					}}
-					className="mt-5 bg-green-700 rounded-xl h-14 items-center justify-center flex-row gap-2"
+					onPress={() => subscribe(selected)}
+					disabled={!selected || subscribing || isCurrentPlanSelected}
+					className={`mt-5 rounded-xl h-14 items-center justify-center flex-row gap-2 ${!selected || subscribing || isCurrentPlanSelected ? "bg-gray-400" : "bg-green-700"}`}
 				>
-					<Crown size={18} color="#fff" />
+					{subscribing ? <ActivityIndicator color="#fff" /> : <Crown size={18} color="#fff" />}
 					<Text className="text-white font-extrabold text-base">
-						Assinar {selected?.name}
+						{subscribing ? "Assinando..." : isCurrentPlanSelected ? "Seu plano atual" : `Assinar ${selected?.name ?? "plano"}`}
 					</Text>
 				</Pressable>
 
-				<Pressable className="mt-4 items-center">
+				<Pressable className="mt-4 items-center" disabled={subscribing || currentPlanId === plans.find((plan) => plan.monthly_price === 0)?.id} onPress={() => subscribe(plans.find((plan) => plan.monthly_price === 0))}>
 					<Text className="text-purple-800 font-bold">Continuar no plano gratuito ›</Text>
 				</Pressable>
 
