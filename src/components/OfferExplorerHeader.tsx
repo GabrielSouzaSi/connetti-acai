@@ -1,10 +1,16 @@
-import { Header } from "@/components/Header"
 import { AcaiOffer } from "@/components/AcaiCard"
-import { Filter, Search, X } from "lucide-react-native"
+import { Header } from "@/components/Header"
+import { Filter, MapPin, Search, X } from "lucide-react-native"
 import { useState } from "react"
-import { Image, Modal, Pressable, Text, TextInput, View } from "react-native"
+import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native"
 
 export type OfferTypeFilter = "all" | "sell" | "buy"
+
+export type MunicipalityFilterOption = {
+	id: number | null
+	name: string
+	state?: string | null
+}
 
 function normalize(value: unknown) {
 	return String(value ?? "")
@@ -40,6 +46,10 @@ type OfferExplorerHeaderProps = {
 	onQueryChange: (query: string) => void
 	typeFilter: OfferTypeFilter
 	onTypeFilterChange: (filter: OfferTypeFilter) => void
+	municipalities: MunicipalityFilterOption[]
+	selectedMunicipalityId: number | null
+	selectedMunicipalityName?: string
+	onMunicipalityChange: (municipality: MunicipalityFilterOption) => void
 }
 
 const typeOptions: Array<{ value: OfferTypeFilter; label: string }> = [
@@ -53,6 +63,10 @@ export function OfferExplorerHeader({
 	onQueryChange,
 	typeFilter,
 	onTypeFilterChange,
+	municipalities,
+	selectedMunicipalityId,
+	selectedMunicipalityName,
+	onMunicipalityChange,
 }: OfferExplorerHeaderProps) {
 	const [searchVisible, setSearchVisible] = useState(false)
 	const [filterVisible, setFilterVisible] = useState(false)
@@ -66,11 +80,24 @@ export function OfferExplorerHeader({
 		<>
 			<Header
 				centerContent={
-					<Image
-						className="h-12 w-36"
-						source={require("@/assets/logo.png")}
-						resizeMode="contain"
-					/>
+					// <View className="flex-row items-center gap-2 bg-white rounded-lg px-2 py-1">
+					// 	<Image
+					// 		className="h-12 w-12"
+					// 		source={require("@/assets/logo2.png")}
+					// 		resizeMode="contain"
+					// 	/>
+					// 	<View className="flex-row items-center justify-center">
+					// 		<Text className="text-center text-base font-extrabold text-connecttiGreen">
+					// 			Connectti{" "}
+					// 		</Text>
+					// 		<Text className="text-center text-base font-extrabold text-acaiPurple">
+					// 			Açaí
+					// 		</Text>
+					// 	</View>
+					// </View>
+					<Text className="text-center text-lg font-extrabold text-white">
+						Ofertas de Açaí
+					</Text>
 				}
 				rightAction={
 					<View className="flex-row gap-2">
@@ -132,7 +159,7 @@ export function OfferExplorerHeader({
 				>
 					<Pressable
 						onPress={(event) => event.stopPropagation()}
-						className="rounded-t-3xl bg-white px-5 pb-10 pt-5"
+						className="max-h-[80%] rounded-t-3xl bg-white px-5 pb-10 pt-5"
 					>
 						<View className="mb-5 flex-row items-center justify-between">
 							<Text className="text-xl font-bold text-gray-900">Filtrar ofertas</Text>
@@ -146,36 +173,85 @@ export function OfferExplorerHeader({
 							</Pressable>
 						</View>
 
-						{typeOptions.map((option) => {
-							const selected = typeFilter === option.value
-							return (
-								<Pressable
-									key={option.value}
-									onPress={() => {
-										onTypeFilterChange(option.value)
-										setFilterVisible(false)
-									}}
-									className={`mb-3 flex-row items-center justify-between rounded-2xl border p-4 ${selected ? "border-purple-700 bg-purple-50" : "border-gray-200 bg-white"}`}
-								>
-									<Text
-										className={
-											selected
-												? "font-semibold text-purple-900"
-												: "text-gray-700"
-										}
+						<ScrollView showsVerticalScrollIndicator={false}>
+							<Text className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+								Tipo de oferta
+							</Text>
+							{typeOptions.map((option) => {
+								const selected = typeFilter === option.value
+								return (
+									<Pressable
+										key={option.value}
+										onPress={() => {
+											onTypeFilterChange(option.value)
+											setFilterVisible(false)
+										}}
+										className={`mb-3 flex-row items-center justify-between rounded-2xl border p-4 ${selected ? "border-purple-700 bg-purple-50" : "border-gray-200 bg-white"}`}
 									>
-										{option.label}
-									</Text>
-									<View
-										className={`h-5 w-5 items-center justify-center rounded-full border ${selected ? "border-purple-700" : "border-gray-300"}`}
+										<Text
+											className={
+												selected
+													? "font-semibold text-purple-900"
+													: "text-gray-700"
+											}
+										>
+											{option.label}
+										</Text>
+										<View
+											className={`h-5 w-5 items-center justify-center rounded-full border ${selected ? "border-purple-700" : "border-gray-300"}`}
+										>
+											{selected ? (
+												<View className="h-3 w-3 rounded-full bg-purple-700" />
+											) : null}
+										</View>
+									</Pressable>
+								)
+							})}
+
+							<View className="mb-3 mt-4 flex-row items-center gap-2">
+								<MapPin size={18} color="#512B76" />
+								<Text className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+									Município
+								</Text>
+							</View>
+
+							{municipalities.map((municipality) => {
+								const selected =
+									municipality.id !== null && selectedMunicipalityId !== null
+										? municipality.id === selectedMunicipalityId
+										: normalize(municipality.name) ===
+											normalize(selectedMunicipalityName)
+
+								return (
+									<Pressable
+										key={`${municipality.id ?? municipality.name}-${municipality.state ?? ""}`}
+										onPress={() => {
+											onMunicipalityChange(municipality)
+											setFilterVisible(false)
+										}}
+										className={`mb-3 flex-row items-center justify-between rounded-2xl border p-4 ${selected ? "border-purple-700 bg-purple-50" : "border-gray-200 bg-white"}`}
 									>
-										{selected ? (
-											<View className="h-3 w-3 rounded-full bg-purple-700" />
-										) : null}
-									</View>
-								</Pressable>
-							)
-						})}
+										<Text
+											className={
+												selected
+													? "font-semibold text-purple-900"
+													: "text-gray-700"
+											}
+										>
+											{municipality.name}
+											{municipality.state ? ` - ${municipality.state}` : ""}
+										</Text>
+										<View
+											className={`h-5 w-5 items-center justify-center rounded-full border ${selected ? "border-purple-700" : "border-gray-300"}`}
+										>
+											{selected ? (
+												<View className="h-3 w-3 rounded-full bg-purple-700" />
+											) : null}
+										</View>
+									</Pressable>
+								)
+							})}
+						</ScrollView>
 					</Pressable>
 				</Pressable>
 			</Modal>
