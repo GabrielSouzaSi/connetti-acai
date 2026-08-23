@@ -1,5 +1,5 @@
 // contexts/AuthContext.tsx
-import { UserDTO } from "@/dtos/userDTO"
+import { LoginResponseDTO, UserDTO } from "@/dtos/userDTO"
 import { server } from "@/server/api"
 import {
 	storageAuthTokenGet,
@@ -45,14 +45,11 @@ export function AuthContextProvider({ children }: AuthContextProviderProps) {
 				? identifier.trim().toLowerCase()
 				: identifier.replace(/\D/g, "")
 
-			const { data } = await server.post("/login", {
+			const { data } = await server.post<LoginResponseDTO>("/login", {
 				identifier: normalizedIdentifier,
 				password,
 			})
-			console.log(data)
-
-			if (data?.user && data?.token) {
-				console.log("Login bem-sucedido:", data.user)
+			if (data.user && data.token) {
 				await Promise.all([storageUserSave(data.user), storageAuthTokenSave(data.token)])
 				applyAuthHeader(data.token)
 				setUser(data.user)
