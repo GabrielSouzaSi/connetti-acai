@@ -1,8 +1,9 @@
-import { router } from "expo-router"
+import { UpgradePlanModal } from "@/components/UpgradePlanModal"
 import { calculateOfferValues, formatOfferCurrency } from "@/utils/offerValues"
-import { CalendarDays, Crown, MapPin, Package, Star, TrendingUp, X } from "lucide-react-native"
+import { router } from "expo-router"
+import { CalendarDays, Crown, MapPin, Package, Star, TrendingUp } from "lucide-react-native"
 import { useState } from "react"
-import { Image, Modal, Pressable, Text, useWindowDimensions, View } from "react-native"
+import { Image, Pressable, Text, useWindowDimensions, View } from "react-native"
 
 export interface AcaiOffer {
 	id: number
@@ -249,24 +250,33 @@ export function AcaiCard({ item, image }: AcaiCardProps) {
 
 export function AcaiCardBasic({ item, image }: AcaiCardProps) {
 	const [upgradeModalVisible, setUpgradeModalVisible] = useState(false)
-	const pricePerKg =
-		calculateOfferValues(item.volume.original, item.volume.unit, item.price)?.kg.unitPrice ??
-		item.price
-
-	function openPlans() {
-		setUpgradeModalVisible(false)
-		router.push("/pages/plans")
-	}
+	const unitValues = calculateOfferValues(item.volume.original, item.volume.unit, item.price)
+	const pricePerKg = unitValues?.kg.unitPrice ?? item.price
 
 	return (
 		<>
 			<View className="mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-				<Image source={image} className="h-44 w-full" resizeMode="cover" />
+				<View className="relative h-44">
+					<Image source={image} className="h-full w-full" resizeMode="cover" />
+
+					<Pressable
+						onPress={() => setUpgradeModalVisible(true)}
+						accessibilityRole="button"
+						accessibilityLabel="Ver detalhes da oferta"
+						className="absolute right-4 h-12 items-end justify-center rounded-xl border border-green-300 bg-green-100 px-4 shadow-sm"
+						style={{ top: "100%", transform: [{ translateY: -24 }] }}
+					>
+						<Text className="text-sm font-semibold text-green-700">Ver detalhes</Text>
+					</Pressable>
+				</View>
 
 				<View className="p-4">
 					<View className="flex-row items-start gap-2">
 						<MapPin size={17} color="#7C3AED" />
-						<Text numberOfLines={2} className="min-w-0 flex-1 font-medium text-gray-700">
+						<Text
+							numberOfLines={2}
+							className="min-w-0 flex-1 font-medium text-gray-700"
+						>
 							{item.municipality.name} - {item.municipality.state}
 						</Text>
 					</View>
@@ -278,82 +288,38 @@ export function AcaiCardBasic({ item, image }: AcaiCardProps) {
 						</Text>
 					</View>
 
-					<View className="mt-4 flex-row items-end justify-between gap-4">
-						<View className="min-w-0 flex-1">
-							<Text className="text-xs font-medium uppercase tracking-wide text-gray-400">
-								Valor da oferta
-							</Text>
-							<Text
-								numberOfLines={1}
-								adjustsFontSizeToFit
-								className="text-2xl font-bold text-violet-700"
-							>
-								{formatOfferCurrency(pricePerKg)}
-							</Text>
-							<Text className="text-xs text-gray-400">/ kg</Text>
-						</View>
+					<Text className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-400">
+						Valor da oferta por unidade
+					</Text>
 
-						<Pressable
-							onPress={() => setUpgradeModalVisible(true)}
-							accessibilityRole="button"
-							accessibilityLabel="Ver detalhes da oferta"
-							className="rounded-xl border border-green-300 bg-green-100 px-4 py-3"
-						>
-							<Text className="text-sm font-semibold text-green-700">Ver detalhes</Text>
-						</Pressable>
+					<View className="mt-2 flex-row">
+						{[
+							{ unit: "kg", value: pricePerKg },
+							{ unit: "lata", value: unitValues?.lata.unitPrice },
+							{ unit: "tela", value: unitValues?.tela.unitPrice },
+						].map(({ unit, value }, index) => (
+							<View
+								key={unit}
+								className={`min-w-0 flex-1 ${index > 0 ? "border-l border-gray-100 pl-3" : "pr-3"}`}
+							>
+								<Text
+									numberOfLines={1}
+									adjustsFontSizeToFit
+									className="text-lg font-bold text-violet-700"
+								>
+									{value == null ? "—" : formatOfferCurrency(value)}
+								</Text>
+								<Text className="text-xs text-gray-400">/ {unit}</Text>
+							</View>
+						))}
 					</View>
 				</View>
 			</View>
 
-			<Modal
+			<UpgradePlanModal
 				visible={upgradeModalVisible}
-				transparent
-				animationType="fade"
-				statusBarTranslucent
-				onRequestClose={() => setUpgradeModalVisible(false)}
-			>
-				<View className="flex-1 items-center justify-center bg-black/50 px-6">
-					<View className="w-full max-w-md rounded-3xl bg-white p-6">
-						<Pressable
-							onPress={() => setUpgradeModalVisible(false)}
-							accessibilityRole="button"
-							accessibilityLabel="Fechar"
-							className="absolute right-4 top-4 z-10 h-9 w-9 items-center justify-center rounded-full bg-gray-100"
-						>
-							<X size={19} color="#4B5563" />
-						</Pressable>
-
-						<View className="mb-4 h-14 w-14 items-center justify-center rounded-full bg-purple-100">
-							<Crown size={28} color="#512B76" />
-						</View>
-
-						<Text className="pr-8 text-xl font-bold text-gray-900">
-							Detalhes exclusivos para assinantes
-						</Text>
-						<Text className="mt-2 leading-5 text-gray-600">
-							Assine um de nossos planos para acessar os detalhes completos desta oferta e
-							outros recursos exclusivos.
-						</Text>
-
-						<Pressable
-							onPress={openPlans}
-							accessibilityRole="button"
-							className="mt-6 flex-row items-center justify-center gap-2 rounded-xl bg-purple-900 py-3.5"
-						>
-							<Crown size={18} color="#FFFFFF" />
-							<Text className="font-semibold text-white">Conhecer os planos</Text>
-						</Pressable>
-
-						<Pressable
-							onPress={() => setUpgradeModalVisible(false)}
-							accessibilityRole="button"
-							className="mt-3 items-center rounded-xl border border-gray-300 py-3.5"
-						>
-							<Text className="font-semibold text-gray-700">Agora não</Text>
-						</Pressable>
-					</View>
-				</View>
-			</Modal>
+				onClose={() => setUpgradeModalVisible(false)}
+			/>
 		</>
 	)
 }
