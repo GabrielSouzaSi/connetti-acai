@@ -97,6 +97,40 @@ type Coordinates = {
 	longitude: number
 }
 
+function normalizePhone(value: string) {
+	const digits = value.replace(/\D/g, "")
+
+	// Números nacionais incluem o DDD, que também pode ser 55.
+	if (digits.length === 10 || digits.length === 11) return `55${digits}`
+
+	return digits
+}
+
+function formatCpf(value: string) {
+	return value
+		.replace(/\D/g, "")
+		.slice(0, 11)
+		.replace(/(\d{3})(\d)/, "$1.$2")
+		.replace(/(\d{3})(\d)/, "$1.$2")
+		.replace(/(\d{3})(\d{1,2})$/, "$1-$2")
+}
+
+function isValidCpf(value: string) {
+	const digits = value.replace(/\D/g, "")
+	if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false
+
+	const calculateDigit = (length: number) => {
+		const sum = digits
+			.slice(0, length)
+			.split("")
+			.reduce((total, digit, index) => total + Number(digit) * (length + 1 - index), 0)
+		const remainder = (sum * 10) % 11
+		return remainder === 10 ? 0 : remainder
+	}
+
+	return calculateDigit(9) === Number(digits[9]) && calculateDigit(10) === Number(digits[10])
+}
+
 // Instância isolada: não herda o Authorization global configurado no AuthContext.
 const authApi = axios.create({
 	baseURL: API_URL,
@@ -118,6 +152,7 @@ export default function Register() {
 	const [name, setName] = useState("")
 	const [email, setEmail] = useState("")
 	const [phone, setPhone] = useState("")
+	const [cpf, setCpf] = useState("")
 	const [genders, setGenders] = useState<RegistrationOption[]>([])
 	const [selectedGender, setSelectedGender] = useState<RegistrationOption | null>(null)
 	const [roles, setRoles] = useState<RegistrationOption[]>([])
@@ -336,18 +371,28 @@ export default function Register() {
 	function handleNextStep() {
 		if (step === 1) {
 			const normalizedName = name.trim()
-			const normalizedEmail = email.trim()
-			const normalizedPhone = phone.replace(/\D/g, "")
+			const normalizedPhone = normalizePhone(phone)
+			const normalizedCpf = cpf.replace(/\D/g, "")
 
 			if (
 				!normalizedName ||
-				(!normalizedEmail && !normalizedPhone) ||
+				!normalizedPhone ||
+				!normalizedCpf ||
 				!selectedGender?.value
 			) {
 				Toast.show({
 					type: "info",
 					text1: "Dados pessoais incompletos",
-					text2: "Informe nome, gênero e pelo menos e-mail ou telefone.",
+					text2: "Informe nome, CPF, gênero e telefone.",
+				})
+				return
+			}
+
+			if (!isValidCpf(normalizedCpf)) {
+				Toast.show({
+					type: "info",
+					text1: "CPF inválido",
+					text2: "Confira os números informados.",
 				})
 				return
 			}
@@ -389,11 +434,13 @@ export default function Register() {
 	async function handleRegister() {
 		const normalizedName = name.trim()
 		const normalizedEmail = email.trim().toLowerCase()
-		const normalizedPhone = phone.replace(/\D/g, "")
+		const normalizedPhone = normalizePhone(phone)
+		const normalizedCpf = cpf.replace(/\D/g, "")
 
 		if (
 			!normalizedName ||
-			(!normalizedEmail && !normalizedPhone) ||
+			!normalizedPhone ||
+			!normalizedCpf ||
 			!selectedGender?.value ||
 			!selectedRole ||
 			!selectedMunicipality ||
@@ -403,7 +450,7 @@ export default function Register() {
 			Toast.show({
 				type: "info",
 				text1: "Atenção",
-				text2: "Preencha os campos obrigatórios e informe um e-mail ou telefone.",
+				text2: "Preencha os campos obrigatórios, incluindo CPF e telefone.",
 			})
 			return
 		}
@@ -413,6 +460,15 @@ export default function Register() {
 				type: "info",
 				text1: "Localização necessária",
 				text2: "Use sua localização atual antes de concluir o cadastro.",
+			})
+			return
+		}
+
+		if (!isValidCpf(normalizedCpf)) {
+			Toast.show({
+				type: "info",
+				text1: "CPF inválido",
+				text2: "Confira os números informados.",
 			})
 			return
 		}
@@ -440,8 +496,10 @@ export default function Register() {
 		const productionAreaValue =
 			isProducer && normalizedProductionArea ? Number(normalizedProductionArea) : undefined
 		if (
-			productionAreaValue !== undefined &&
-			(!Number.isFinite(productionAreaValue) || productionAreaValue <= 0)
+			isProducer &&
+			(productionAreaValue === undefined ||
+				!Number.isFinite(productionAreaValue) ||
+				productionAreaValue <= 0)
 		) {
 			Toast.show({
 				type: "info",
@@ -458,7 +516,8 @@ export default function Register() {
 			const payload = {
 				name: normalizedName,
 				...(normalizedEmail ? { email: normalizedEmail } : {}),
-				...(normalizedPhone ? { phone: normalizedPhone } : {}),
+				phone: normalizedPhone,
+				cpf: normalizedCpf,
 				gender: selectedGender.value,
 				role_ids: [selectedRole.id],
 				municipality_id: selectedMunicipality.id,
@@ -477,8 +536,6 @@ export default function Register() {
 				password,
 				password_confirmation: passwordConfirmation,
 			}
-			console.log("Dados: " + JSON.stringify(payload))
-
 			await authApi.post("/register", payload)
 
 			Toast.show({
@@ -564,19 +621,49 @@ export default function Register() {
 							/>
 							<Field
 								className="border border-gray-300 rounded-xl"
-								placeholder="E-mail (opcional se informar telefone)"
+								placeholder="E-mail (opcional)"
 								value={email}
 								onChangeText={setEmail}
 								keyboardType="email-address"
 								autoComplete="email"
 							/>
+							<View className="gap-2">
+								<Text className="text-sm text-gray-600">
+									Telefone / WhatsApp (obrigatório)
+								</Text>
+								<View className="flex-row gap-2">
+									<View
+										className="justify-center border border-gray-300 rounded-xl bg-gray-50 px-3"
+										accessibilityLabel="Brasil, DDI +55"
+									>
+										<Text className="text-base text-gray-600">🇧🇷 +55</Text>
+									</View>
+									<Field
+										className="flex-1 min-h-12 border border-gray-300 rounded-xl"
+										placeholder=""
+										accessibilityLabel="Telefone com DDD"
+										value={phone}
+										onChangeText={(value) => {
+											const digits = value.replace(/\D/g, "")
+											const nationalNumber =
+												(digits.length === 12 || digits.length === 13) &&
+												digits.startsWith("55")
+													? digits.slice(2)
+													: digits
+											setPhone(nationalNumber.slice(0, 11))
+										}}
+										keyboardType="phone-pad"
+										autoComplete="tel-national"
+									/>
+								</View>
+							</View>
 							<Field
 								className="border border-gray-300 rounded-xl"
-								placeholder="Telefone / WhatsApp (opcional se informar e-mail)"
-								value={phone}
-								onChangeText={setPhone}
-								keyboardType="phone-pad"
-								autoComplete="tel"
+								placeholder="CPF"
+								value={cpf}
+								onChangeText={(value) => setCpf(formatCpf(value))}
+								keyboardType="number-pad"
+								maxLength={14}
 							/>
 
 							<Text className="text-lg font-bold">Gênero</Text>
@@ -769,7 +856,7 @@ export default function Register() {
 
 							{selectedRole?.name === "producer" && (
 								<>
-									<Text className="text-lg font-bold">Produção (opcional)</Text>
+									<Text className="text-lg font-bold">Produção</Text>
 									<Pressable
 										onPress={() => setIsPropertyModalVisible(true)}
 										disabled={!selectedMunicipality || isLoadingProperties}
@@ -813,7 +900,7 @@ export default function Register() {
 									)}
 									<Field
 										className="border border-gray-300 rounded-xl"
-										placeholder="Área de produção em hectares (opcional)"
+										placeholder="Área de produção em hectares (obrigatório)"
 										value={productionArea}
 										onChangeText={setProductionArea}
 										keyboardType="decimal-pad"
