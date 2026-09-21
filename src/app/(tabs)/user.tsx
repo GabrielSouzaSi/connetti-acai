@@ -1,3 +1,4 @@
+import { AdminProfileSelector } from "@/components/AdminProfileSelector"
 import { Feature } from "@/auth/accessControl"
 import { Header } from "@/components/Header"
 import { Profile } from "@/components/Profile"
@@ -8,9 +9,8 @@ import {
 	Bell,
 	ChevronRight,
 	CreditCard,
-	HelpCircle,
+	Lightbulb,
 	LogOut,
-	MessageCircle,
 	ShieldCheck,
 	Tag,
 	User,
@@ -30,6 +30,7 @@ type MenuOption = {
 		| "/pages/verification"
 		| "/pages/notificationSettings"
 		| "/pages/helpSupport"
+		| "/pages/feedback"
 	access?: Feature
 }
 
@@ -65,18 +66,24 @@ const options: readonly MenuOption[] = [
 		icon: Bell,
 		route: "/pages/notificationSettings",
 	},
+	// {
+	// 	title: "Ajuda e suporte",
+	// 	description: "Central de atendimento",
+	// 	icon: HelpCircle,
+	// 	route: "/pages/helpSupport",
+	// },
 	{
-		title: "Ajuda e suporte",
-		description: "Central de atendimento",
-		icon: HelpCircle,
-		route: "/pages/helpSupport",
+		title: "Feedback e sugestões",
+		description: "Compartilhe ideias para melhorar o app",
+		icon: Lightbulb,
+		route: "/pages/feedback",
 	},
-	{
-		title: "Chat com suporte",
-		description: "Fale com a equipe",
-		icon: MessageCircle,
-		route: "/pages/chat",
-	},
+	// {
+	// 	title: "Chat com suporte",
+	// 	description: "Fale com a equipe",
+	// 	icon: MessageCircle,
+	// 	route: "/pages/chat",
+	// },
 ]
 
 export default function TabUserScreen() {
@@ -90,6 +97,7 @@ export default function TabUserScreen() {
 			<Header title="Perfil" subtitle="Conta e preferências" />
 			<ScrollView showsVerticalScrollIndicator={false} className="flex-1 bg-gray-50">
 				<Profile plan assessment />
+				<AdminProfileSelector />
 
 				<View className="px-5 mt-5">
 					<Text className="text-gray-900 text-lg font-bold mb-3">Minha conta</Text>
