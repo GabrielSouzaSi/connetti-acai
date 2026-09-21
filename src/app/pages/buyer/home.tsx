@@ -5,7 +5,7 @@ export default function PageBuyerHomeScreen() {
 		<MunicipalityAveragesScreen
 			embedded
 			selectable
-			allowDateSelection={false}
+			allowDateSelection
 			title="Médias por município"
 			subtitle="Selecione um município para ver as ofertas"
 		/>
