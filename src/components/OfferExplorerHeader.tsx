@@ -70,6 +70,26 @@ export function OfferExplorerHeader({
 }: OfferExplorerHeaderProps) {
 	const [searchVisible, setSearchVisible] = useState(false)
 	const [filterVisible, setFilterVisible] = useState(false)
+	const [draftTypeFilter, setDraftTypeFilter] = useState(typeFilter)
+	const [draftMunicipality, setDraftMunicipality] = useState<MunicipalityFilterOption | null>(
+		null,
+	)
+	const activeDraftMunicipality = draftMunicipality ?? {
+		id: selectedMunicipalityId,
+		name: selectedMunicipalityName,
+	}
+
+	function openFilters() {
+		setDraftTypeFilter(typeFilter)
+		setDraftMunicipality(null)
+		setFilterVisible(true)
+	}
+
+	function applyFilters() {
+		onTypeFilterChange(draftTypeFilter)
+		if (draftMunicipality) onMunicipalityChange(draftMunicipality)
+		setFilterVisible(false)
+	}
 
 	function closeSearch() {
 		onQueryChange("")
@@ -80,22 +100,13 @@ export function OfferExplorerHeader({
 		<>
 			<Header
 				centerContent={
-					// <View className="flex-row items-center gap-2 bg-white rounded-lg px-2 py-1">
-					// 	<Image
-					// 		className="h-12 w-12"
-					// 		source={require("@/assets/logo2.png")}
-					// 		resizeMode="contain"
-					// 	/>
-					// 	<View className="flex-row items-center justify-center">
-					// 		<Text className="text-center text-base font-extrabold text-connecttiGreen">
-					// 			Connectti{" "}
-					// 		</Text>
-					// 		<Text className="text-center text-base font-extrabold text-acaiPurple">
-					// 			Açaí
-					// 		</Text>
-					// 	</View>
-					// </View>
-					<Text className="text-center text-lg font-extrabold text-white">
+					<Text
+						numberOfLines={1}
+						adjustsFontSizeToFit
+						minimumFontScale={0.7}
+						style={{ width: "100%", lineHeight: 28 }}
+						className="text-center text-lg font-extrabold text-white"
+					>
 						Ofertas de Açaí
 					</Text>
 				}
@@ -110,7 +121,7 @@ export function OfferExplorerHeader({
 							<Search size={21} color="#FFFFFF" />
 						</Pressable>
 						<Pressable
-							onPress={() => setFilterVisible(true)}
+							onPress={openFilters}
 							accessibilityRole="button"
 							accessibilityLabel="Filtrar ofertas"
 							className="relative h-10 w-10 items-center justify-center rounded-full bg-white/15"
@@ -178,14 +189,11 @@ export function OfferExplorerHeader({
 								Tipo de oferta
 							</Text>
 							{typeOptions.map((option) => {
-								const selected = typeFilter === option.value
+								const selected = draftTypeFilter === option.value
 								return (
 									<Pressable
 										key={option.value}
-										onPress={() => {
-											onTypeFilterChange(option.value)
-											setFilterVisible(false)
-										}}
+										onPress={() => setDraftTypeFilter(option.value)}
 										className={`mb-3 flex-row items-center justify-between rounded-2xl border p-4 ${selected ? "border-purple-700 bg-purple-50" : "border-gray-200 bg-white"}`}
 									>
 										<Text
@@ -217,18 +225,15 @@ export function OfferExplorerHeader({
 
 							{municipalities.map((municipality) => {
 								const selected =
-									municipality.id !== null && selectedMunicipalityId !== null
-										? municipality.id === selectedMunicipalityId
+									municipality.id !== null && activeDraftMunicipality.id !== null
+										? municipality.id === activeDraftMunicipality.id
 										: normalize(municipality.name) ===
-											normalize(selectedMunicipalityName)
+											normalize(activeDraftMunicipality.name)
 
 								return (
 									<Pressable
 										key={`${municipality.id ?? municipality.name}-${municipality.state ?? ""}`}
-										onPress={() => {
-											onMunicipalityChange(municipality)
-											setFilterVisible(false)
-										}}
+										onPress={() => setDraftMunicipality(municipality)}
 										className={`mb-3 flex-row items-center justify-between rounded-2xl border p-4 ${selected ? "border-purple-700 bg-purple-50" : "border-gray-200 bg-white"}`}
 									>
 										<Text
@@ -252,6 +257,14 @@ export function OfferExplorerHeader({
 								)
 							})}
 						</ScrollView>
+						<Pressable
+							onPress={applyFilters}
+							accessibilityRole="button"
+							accessibilityLabel="Aplicar filtros"
+							className="mt-4 items-center rounded-2xl bg-purple-700 px-4 py-4"
+						>
+							<Text className="text-base font-semibold text-white">Aplicar</Text>
+						</Pressable>
 					</Pressable>
 				</Pressable>
 			</Modal>
