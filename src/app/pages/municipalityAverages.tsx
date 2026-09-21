@@ -1,9 +1,11 @@
+import { useMunicipalityOffers } from "@/hooks/useMunicipalityOffers"
+import { routeDate } from "@/utils/routeDate"
 import { DateSelectionModal } from "@/components/DateSelectionModal"
 import { Header } from "@/components/Header"
 import { Profile } from "@/components/Profile"
 import { useAuth } from "@/hooks/useAuth"
 import { MunicipalityAveragePrice, offersApi } from "@/server/offers"
-import { router, useFocusEffect } from "expo-router"
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router"
 import {
 	CalendarDays,
 	ChevronRight,
@@ -13,8 +15,12 @@ import {
 	TrendingUp,
 	X,
 } from "lucide-react-native"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native"
+
+function volume(value: number | null) {
+	return value == null ? "—" : `${value.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} kg`
+}
 
 function currency(value: number) {
 	return value.toLocaleString("pt-BR", {
@@ -61,16 +67,25 @@ export default function MunicipalityAveragesScreen({
 	title = "Médias por município",
 	subtitle = "Selecione um município para ver as ofertas",
 }: MunicipalityAveragesScreenProps) {
-	const [myAverage, setMyAverage] = useState<MunicipalityAveragePrice | null>(null)
+	const requestVersion = useRef(0)
 	const [municipalities, setMunicipalities] = useState<MunicipalityAveragePrice[]>([])
 	const [loading, setLoading] = useState(true)
 	const [refreshing, setRefreshing] = useState(false)
 	const [error, setError] = useState("")
-	const [selectedDate, setSelectedDate] = useState<string | null>(null)
+	const params = useLocalSearchParams<{ date?: string }>()
+	const selectedDate = routeDate(params.date) ?? null
+	function setSelectedDate(value: string | null) {
+		router.setParams({ date: value ?? "" })
+	}
 	const [calendarVisible, setCalendarVisible] = useState(false)
 	const [searchVisible, setSearchVisible] = useState(false)
 	const [query, setQuery] = useState("")
+	const { requestAccess, modal: upgradeModal } = useMunicipalityOffers()
 	const { user } = useAuth()
+	const myAverage =
+		municipalities.find(
+			(item) => item.municipalityId === (user?.municipality_id ?? user?.municipality?.id),
+		) ?? null
 	const normalizedQuery = normalize(query.trim())
 	const filteredMunicipalities = useMemo(
 		() =>
@@ -88,23 +103,24 @@ export default function MunicipalityAveragesScreen({
 
 	const loadAverages = useCallback(
 		async (showLoading = true) => {
+			const version = ++requestVersion.current
 			try {
 				if (showLoading) setLoading(true)
 				setError("")
-				const [ownAverage, municipalityAverages] = await Promise.all([
-					offersApi.averagePriceForMyMunicipality(selectedDate ?? undefined),
-					offersApi.averagePriceByMunicipality(selectedDate ?? undefined),
-				])
-				setMyAverage(ownAverage)
+				const municipalityAverages = await offersApi.averagePriceByMunicipality(
+					selectedDate ?? toIsoDate(new Date()),
+				)
+				if (version !== requestVersion.current) return
 				setMunicipalities(municipalityAverages)
 			} catch (requestError: any) {
+				if (version !== requestVersion.current) return
 				console.error("Erro ao carregar médias municipais", requestError)
 				setError(
 					requestError?.response?.data?.message ??
 						"Não foi possível carregar as médias por município.",
 				)
 			} finally {
-				if (showLoading) setLoading(false)
+				if (version === requestVersion.current && showLoading) setLoading(false)
 			}
 		},
 		[selectedDate],
@@ -121,25 +137,30 @@ export default function MunicipalityAveragesScreen({
 
 	function selectMunicipality(item: MunicipalityAveragePrice) {
 		if (!selectable) return
-		router.replace({
-			pathname: "/(tabs)/sale",
-			params: {
-				...(item.municipalityId !== null
-					? { municipalityId: String(item.municipalityId) }
-					: {}),
-				municipalityName: item.municipalityName,
-			},
-		})
+		requestAccess(() =>
+			router.replace({
+				pathname: "/(tabs)/sale",
+				params: {
+					municipalityId: item.municipalityId != null ? String(item.municipalityId) : "",
+					municipalityName: item.municipalityName,
+					date: selectedDate ?? "",
+				},
+			}),
+		)
 	}
 
 	useFocusEffect(
 		useCallback(() => {
 			void loadAverages()
+			return () => {
+				requestVersion.current += 1
+			}
 		}, [loadAverages]),
 	)
 
 	return (
 		<View className="flex-1 bg-gray-50">
+			{upgradeModal}
 			<Header
 				title={title}
 				subtitle={subtitle}
@@ -279,7 +300,13 @@ export default function MunicipalityAveragesScreen({
 												{myAverage.state ? ` - ${myAverage.state}` : ""}
 											</Text>
 											<Text className="mt-1 text-xs text-purple-200">
-												Calculada em {formatDate(myAverage.calculationDate)}
+													Calculada em {formatDate(myAverage.calculationDate)}
+												</Text>
+												<Text className="mt-1 text-xs text-purple-200">
+													Total de ofertas: {myAverage.offersCount ?? 0}
+												</Text>
+											<Text className="mt-1 text-xs text-purple-200">
+												Volume total: {volume(myAverage.totalVolumeKg)}
 											</Text>
 										</View>
 										<View className="items-end">
@@ -319,6 +346,9 @@ export default function MunicipalityAveragesScreen({
 								<Text className="mt-1 text-xs text-gray-500">
 									{item.offersCount ?? 0} oferta(s) ·{" "}
 									{formatDate(item.calculationDate)}
+								</Text>
+								<Text className="mt-1 text-xs text-gray-500">
+									Volume total: {volume(item.totalVolumeKg)}
 								</Text>
 							</View>
 							<View className="items-end">
