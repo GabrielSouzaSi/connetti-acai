@@ -1,3 +1,4 @@
+import { isAdmin, type Profile } from "@/auth/accessControl"
 // contexts/AuthContext.tsx
 import { LoginResponseDTO, UserDTO } from "@/dtos/userDTO"
 import { server } from "@/server/api"
@@ -12,6 +13,8 @@ import { createContext, ReactNode, useEffect, useMemo, useState } from "react"
 
 export type AuthContextDataProps = {
 	user: UserDTO | null
+	activeProfile: Profile | null
+	selectProfile: (profile: Profile) => void
 	isBootstrapping: boolean // <— só no boot
 	authSubmitting: boolean // <— login/logout em andamento
 	signIn: (identifier: string, password: string) => Promise<void>
@@ -24,6 +27,10 @@ export const AuthContext = createContext<AuthContextDataProps>({} as AuthContext
 
 export function AuthContextProvider({ children }: AuthContextProviderProps) {
 	const [user, setUser] = useState<UserDTO | null>(null)
+	const [activeProfile, setActiveProfile] = useState<Profile | null>(null)
+	function selectProfile(profile: Profile) {
+		if (isAdmin(user) && (profile === "buyer" || profile === "producer")) setActiveProfile(profile)
+	}
 	const [isBootstrapping, setIsBootstrapping] = useState(true)
 	const [authSubmitting, setAuthSubmitting] = useState(false)
 	// const { ensureRegistered, pushToken } = usePush()
@@ -41,9 +48,13 @@ export function AuthContextProvider({ children }: AuthContextProviderProps) {
 	async function signIn(identifier: string, password: string) {
 		setAuthSubmitting(true)
 		try {
-			const normalizedIdentifier = identifier.includes("@")
+			let normalizedIdentifier = identifier.includes("@")
 				? identifier.trim().toLowerCase()
 				: identifier.replace(/\D/g, "")
+
+			if (!identifier.includes("@") && (normalizedIdentifier.length === 10 || normalizedIdentifier.length === 11)) {
+				normalizedIdentifier = `55${normalizedIdentifier}`
+			}
 
 			const { data } = await server.post<LoginResponseDTO>("/login", {
 				identifier: normalizedIdentifier,
@@ -52,6 +63,7 @@ export function AuthContextProvider({ children }: AuthContextProviderProps) {
 			if (data.user && data.token) {
 				await Promise.all([storageUserSave(data.user), storageAuthTokenSave(data.token)])
 				applyAuthHeader(data.token)
+				setActiveProfile(null)
 				setUser(data.user)
 				// const token = (await ensureRegistered()) ?? pushToken
 				// await server.post("/device/register", { token, platform: "android" })
@@ -66,6 +78,7 @@ export function AuthContextProvider({ children }: AuthContextProviderProps) {
 		try {
 			await Promise.all([storageUserRemove(), storageAuthTokenRemove()])
 			applyAuthHeader(null)
+			setActiveProfile(null)
 			setUser(null)
 		} finally {
 			setAuthSubmitting(false)
@@ -81,7 +94,8 @@ export function AuthContextProvider({ children }: AuthContextProviderProps) {
 				setUser(userLogged)
 			} else {
 				applyAuthHeader(null)
-				setUser(null)
+				setActiveProfile(null)
+			setUser(null)
 			}
 		} finally {
 			setIsBootstrapping(false)
@@ -93,8 +107,8 @@ export function AuthContextProvider({ children }: AuthContextProviderProps) {
 	}, [])
 
 	const value = useMemo(
-		() => ({ user, isBootstrapping, authSubmitting, signIn, signOut }),
-		[user, isBootstrapping, authSubmitting],
+		() => ({ user, activeProfile, selectProfile, isBootstrapping, authSubmitting, signIn, signOut }),
+		[user, activeProfile, isBootstrapping, authSubmitting],
 	)
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
