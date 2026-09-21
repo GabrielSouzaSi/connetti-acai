@@ -3,11 +3,7 @@ import { API_URL } from "@/config/env"
 import { useAccess } from "@/hooks/useAccess"
 import { useAuth } from "@/hooks/useAuth"
 import { server } from "@/server/api"
-import {
-	calculateOfferValues,
-	formatOfferCurrency,
-	formatOfferQuantity,
-} from "@/utils/offerValues"
+import { calculateOfferValues, formatOfferCurrency, formatOfferQuantity } from "@/utils/offerValues"
 import axios from "axios"
 import { router, useLocalSearchParams } from "expo-router"
 import { ChevronRight, Grid3X3, Info, Package, Scale } from "lucide-react-native"
@@ -168,13 +164,9 @@ export default function NovaOferta() {
 	useEffect(() => {
 		if (!editingOffer) return
 
-		setQuantidade(
-			String(editingOffer.original_volume ?? editingOffer.volume?.original ?? ""),
-		)
+		setQuantidade(String(editingOffer.original_volume ?? editingOffer.volume?.original ?? ""))
 		setPrice(String(Math.round(Number(editingOffer.price) * 100)))
-		setSelectedProductId(
-			Number(editingOffer.product_id ?? editingOffer.product?.id) || null,
-		)
+		setSelectedProductId(Number(editingOffer.product_id ?? editingOffer.product?.id) || null)
 	}, [editingOffer])
 
 	useEffect(() => {
@@ -212,7 +204,12 @@ export default function NovaOferta() {
 					if (Number.isInteger(numericUnitId) && numericUnitId > 0) return numericUnitId
 
 					const unitValue = String(editingUnit ?? "").toLocaleLowerCase("pt-BR")
-					return units.find((unit) => unit.value.toLocaleLowerCase("pt-BR") === unitValue)?.id ?? units[0]?.id ?? null
+					return (
+						units.find((unit) => unit.value.toLocaleLowerCase("pt-BR") === unitValue)
+							?.id ??
+						units[0]?.id ??
+						null
+					)
 				})
 				setSelectedOfferTypeId(offerType?.id ?? null)
 			} catch (error) {
@@ -229,7 +226,11 @@ export default function NovaOferta() {
 
 	async function handleCreateOffer() {
 		if (!isSellOffer && !isBuyOffer) {
-			Toast.show({ type: "info", text1: "Perfil necessário", text2: "A criação de ofertas está disponível para produtores e compradores." })
+			Toast.show({
+				type: "info",
+				text1: "Perfil necessário",
+				text2: "A criação de ofertas está disponível para produtores e compradores.",
+			})
 			return
 		}
 
@@ -237,27 +238,47 @@ export default function NovaOferta() {
 		const numericPrice = centsToReais(price)
 
 		if (!user?.id) {
-			Toast.show({ type: "error", text1: "Sessão inválida", text2: "Entre novamente para criar uma oferta." })
+			Toast.show({
+				type: "error",
+				text1: "Sessão inválida",
+				text2: "Entre novamente para criar uma oferta.",
+			})
 			return
 		}
 
 		if (!isEditing && !selectedProductId) {
-			Toast.show({ type: "info", text1: "Produto necessário", text2: "Selecione o produto que deseja vender." })
+			Toast.show({
+				type: "info",
+				text1: "Produto necessário",
+				text2: "Selecione o produto que deseja vender.",
+			})
 			return
 		}
 
 		if (!selectedUnitId || !selectedUnit || (!isEditing && !selectedOfferTypeId)) {
-			Toast.show({ type: "error", text1: "Opções indisponíveis", text2: "Não foi possível identificar o tipo ou a unidade da oferta." })
+			Toast.show({
+				type: "error",
+				text1: "Opções indisponíveis",
+				text2: "Não foi possível identificar o tipo ou a unidade da oferta.",
+			})
 			return
 		}
 
 		if (!Number.isInteger(volume) || volume <= 0) {
-			Toast.show({ type: "info", text1: "Quantidade inválida", text2: "Informe uma quantidade inteira maior que zero." })
+			Toast.show({
+				type: "info",
+				text1: "Quantidade inválida",
+				text2: "Informe uma quantidade inteira maior que zero.",
+			})
 			return
 		}
 
 		if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
-			Toast.show({ type: "info", text1: "Dados incompletos", text2: "Informe quantidade e preço maiores que zero." })
+			Toast.show({
+				type: "info",
+				text1: "Dados incompletos",
+				text2: "Informe quantidade e preço maiores que zero.",
+			})
 			return
 		}
 
@@ -312,7 +333,9 @@ export default function NovaOferta() {
 					? "As alterações da oferta foram salvas com sucesso."
 					: `Sua oferta de ${offerTypeLabel.toLowerCase()} foi publicada com sucesso.`,
 			})
-			router.replace("/pages/myOffers")
+			setTimeout(() => {
+				router.back()
+			}, 1500)
 		} catch (error) {
 			if (axios.isAxiosError(error)) {
 				console.error("[Oferta] Erro na requisição", {
@@ -346,7 +369,14 @@ export default function NovaOferta() {
 				title={`${isEditing ? "Editar" : "Nova"} Oferta de ${offerTypeLabel}`}
 				showBack
 				backgroundColor={corPrincipal}
-				rightAction={<TouchableOpacity accessibilityRole="button" accessibilityLabel="Informações da oferta"><Info color="#fff" size={22} /></TouchableOpacity>}
+				rightAction={
+					<TouchableOpacity
+						accessibilityRole="button"
+						accessibilityLabel="Informações da oferta"
+					>
+						<Info color="#fff" size={22} />
+					</TouchableOpacity>
+				}
 			/>
 
 			<ScrollView
@@ -484,7 +514,10 @@ export default function NovaOferta() {
 					</Text>
 
 					{equivalencia ? (
-						<View className="mb-5 rounded-2xl p-4" style={{ backgroundColor: corPrincipal }}>
+						<View
+							className="mb-5 rounded-2xl p-4"
+							style={{ backgroundColor: corPrincipal }}
+						>
 							<Text className="text-center text-sm font-semibold text-white/80">
 								Valor total da oferta
 							</Text>
@@ -595,7 +628,8 @@ function LinhaEquivalencia({ icon, label, unit, quantity, unitPrice, total, cor 
 			</View>
 
 			<Text className="mt-3 text-base font-medium text-gray-800">
-				{formatOfferQuantity(quantity)} {unitLabel} × {formatOfferCurrency(unitPrice)} = {formatOfferCurrency(total)}
+				{formatOfferQuantity(quantity)} {unitLabel} × {formatOfferCurrency(unitPrice)} ={" "}
+				{formatOfferCurrency(total)}
 			</Text>
 		</View>
 	)
