@@ -1,7 +1,7 @@
-import { Header } from "@/components/Header"
 import { ConfirmationModal } from "@/components/ConfirmationModal"
+import { Header } from "@/components/Header"
 import { server } from "@/server/api"
-import { router } from "expo-router"
+import { router, useFocusEffect } from "expo-router"
 import {
 	Calendar,
 	CheckCircle,
@@ -11,11 +11,11 @@ import {
 	Package,
 	Pencil,
 	Plus,
-	TrendingUp,
 	Trash2,
+	TrendingUp,
 	XCircle,
 } from "lucide-react-native"
-import { useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { ActivityIndicator, FlatList, Image, Pressable, Text, View } from "react-native"
 import Toast from "react-native-toast-message"
 
@@ -119,159 +119,169 @@ function MyOfferCard({ item, onCancelled }: { item: MyOffer; onCancelled: () => 
 	)
 
 	async function handleCancel() {
-						const endpoint = `/offers/${item.id}/cancel`
+		const endpoint = `/offers/${item.id}/cancel`
 
-						try {
-							setCancelling(true)
-							console.log("[Oferta] Cancelando oferta", { endpoint, offerId: item.id })
-							await server.patch(endpoint, {})
-							Toast.show({ type: "success", text1: "Oferta cancelada", text2: "A oferta foi cancelada com sucesso." })
-							setConfirmCancelVisible(false)
-							await onCancelled()
-						} catch (error: any) {
-							console.error("[Oferta] Erro ao cancelar oferta", {
-								endpoint,
-								status: error?.response?.status,
-								response: error?.response?.data,
-							})
-							Toast.show({
-								type: "error",
-								text1: "Erro ao cancelar oferta",
-								text2: error?.response?.data?.message ?? "Não foi possível cancelar a oferta. Tente novamente.",
-							})
-						} finally {
-							setCancelling(false)
-						}
+		try {
+			setCancelling(true)
+			console.log("[Oferta] Cancelando oferta", { endpoint, offerId: item.id })
+			await server.patch(endpoint, {})
+			Toast.show({
+				type: "success",
+				text1: "Oferta cancelada",
+				text2: "A oferta foi cancelada com sucesso.",
+			})
+			setConfirmCancelVisible(false)
+			await onCancelled()
+		} catch (error: any) {
+			console.error("[Oferta] Erro ao cancelar oferta", {
+				endpoint,
+				status: error?.response?.status,
+				response: error?.response?.data,
+			})
+			Toast.show({
+				type: "error",
+				text1: "Erro ao cancelar oferta",
+				text2:
+					error?.response?.data?.message ??
+					"Não foi possível cancelar a oferta. Tente novamente.",
+			})
+		} finally {
+			setCancelling(false)
+		}
 	}
 
 	return (
 		<>
-		<View className="bg-white rounded-2xl p-3 mb-4 shadow-sm border border-gray-100">
-			<View className="flex-row gap-3">
-				<Image source={acaiImage} className="w-28 h-28 rounded-2xl" resizeMode="cover" />
+			<View className="bg-white rounded-2xl p-3 mb-4 shadow-sm border border-gray-100">
+				<View className="flex-row gap-3">
+					<Image
+						source={acaiImage}
+						className="w-28 h-28 rounded-2xl"
+						resizeMode="cover"
+					/>
 
-				<View className="flex-1 justify-between">
-					<View className="gap-2">
-						<View className="flex-row items-center gap-1">
-							<MapPin size={14} color="#7C3AED" />
-							<Text className="text-gray-700 font-medium text-sm">
-								{item.municipality.name} - {item.municipality.state}
-							</Text>
-						</View>
-
-						<View className="flex-row items-center gap-1">
-							<Package size={14} color="#6B7280" />
-							<Text className="text-gray-900 font-semibold text-base">
-								{item.volume.kg.toLocaleString("pt-BR")} kg
-							</Text>
-						</View>
-
-						<Text className="text-xs text-gray-400">
-							{item.volume.original} {item.volume.unit} disponíveis
-						</Text>
-
-						<View className="flex-row gap-2">
-							<Text className="bg-violet-100 text-violet-700 text-xs px-2 py-1 rounded-full">
-								{typeLabel}
-							</Text>
-
-							<View
-								className={`flex-row items-center gap-1 px-2 py-1 rounded-full ${status.className}`}
-							>
-								<StatusIcon size={12} color={status.color} />
-								<Text className={`text-xs ${status.textClassName}`}>
-									{status.label}
+					<View className="flex-1 justify-between">
+						<View className="gap-2">
+							<View className="flex-row items-center gap-1">
+								<MapPin size={14} color="#7C3AED" />
+								<Text className="text-gray-700 font-medium text-sm">
+									{item.municipality.name} - {item.municipality.state}
 								</Text>
 							</View>
+
+							<View className="flex-row items-center gap-1">
+								<Package size={14} color="#6B7280" />
+								<Text className="text-gray-900 font-semibold text-base">
+									{item.volume.kg.toLocaleString("pt-BR")} kg
+								</Text>
+							</View>
+
+							<Text className="text-xs text-gray-400">
+								{item.volume.original} {item.volume.unit} disponíveis
+							</Text>
+
+							<View className="flex-row gap-2">
+								<Text className="bg-violet-100 text-violet-700 text-xs px-2 py-1 rounded-full">
+									{typeLabel}
+								</Text>
+
+								<View
+									className={`flex-row items-center gap-1 px-2 py-1 rounded-full ${status.className}`}
+								>
+									<StatusIcon size={12} color={status.color} />
+									<Text className={`text-xs ${status.textClassName}`}>
+										{status.label}
+									</Text>
+								</View>
+							</View>
 						</View>
-					</View>
 
-					<View className="flex-row items-center gap-1">
-						<Calendar size={13} color="#9CA3AF" />
-						<Text className="text-xs text-gray-400">
-							Criada em {formatDate(item.dates.created_at)}
-						</Text>
-					</View>
-				</View>
-
-				<View className="items-end justify-between">
-					<View className="items-end">
-						<Text className="text-2xl font-bold text-violet-700">
-							R$ {formatPrice(item.price)}
-						</Text>
-
-						<Text className="text-xs text-gray-400">/ {item.volume.unit}</Text>
-
-						<View className="flex-row items-center gap-1 mt-2">
-							<TrendingUp size={14} color="#16A34A" />
-							<Text className="text-green-600 font-semibold text-sm">
-								{item.volume.lata.toFixed(2)} latas
+						<View className="flex-row items-center gap-1">
+							<Calendar size={13} color="#9CA3AF" />
+							<Text className="text-xs text-gray-400">
+								Criada em {formatDate(item.dates.created_at)}
 							</Text>
 						</View>
+					</View>
 
-						<Text className="text-[10px] text-gray-400">
-							{item.volume.tela.toFixed(2)} telas
-						</Text>
+					<View className="items-end justify-between">
+						<View className="items-end">
+							<Text className="text-2xl font-bold text-violet-700">
+								R$ {formatPrice(item.price)}
+							</Text>
+
+							<Text className="text-xs text-gray-400">/ {item.volume.unit}</Text>
+
+							<View className="flex-row items-center gap-1 mt-2">
+								<TrendingUp size={14} color="#16A34A" />
+								<Text className="text-green-600 font-semibold text-sm">
+									{item.volume.lata.toFixed(2)} latas
+								</Text>
+							</View>
+
+							<Text className="text-[10px] text-gray-400">
+								{item.volume.tela.toFixed(2)} telas
+							</Text>
+						</View>
 					</View>
 				</View>
+
+				<View className="flex-row gap-2 mt-4">
+					<Pressable
+						onPress={() =>
+							router.push({
+								pathname: "/pages/offerDetails",
+								params: { offer: JSON.stringify(item) },
+							})
+						}
+						className="flex-1 bg-green-100 border border-green-300 py-3 rounded-xl flex-row items-center justify-center gap-2"
+					>
+						<Eye size={16} color="#15803D" />
+						<Text className="text-green-700 font-semibold text-sm">Ver detalhes</Text>
+					</Pressable>
+
+					<Pressable
+						onPress={() =>
+							router.push({
+								pathname: "/pages/createSale",
+								params: { offer: JSON.stringify(item) },
+							})
+						}
+						className="flex-1 bg-violet-100 border border-violet-300 py-3 rounded-xl flex-row items-center justify-center gap-2"
+					>
+						<Pencil size={16} color="#6D28D9" />
+						<Text className="text-violet-700 font-semibold text-sm">Editar</Text>
+					</Pressable>
+				</View>
+
+				{canCancel ? (
+					<Pressable
+						onPress={() => setConfirmCancelVisible(true)}
+						disabled={cancelling}
+						className={`mt-2 border border-red-300 py-3 rounded-xl flex-row items-center justify-center gap-2 ${cancelling ? "bg-red-50 opacity-60" : "bg-white"}`}
+					>
+						{cancelling ? (
+							<ActivityIndicator size="small" color="#DC2626" />
+						) : (
+							<Trash2 size={16} color="#DC2626" />
+						)}
+						<Text className="text-red-600 font-semibold text-sm">
+							{cancelling ? "Cancelando..." : "Cancelar oferta"}
+						</Text>
+					</Pressable>
+				) : null}
 			</View>
-
-			<View className="flex-row gap-2 mt-4">
-				<Pressable
-					onPress={() =>
-						router.push({
-							pathname: "/pages/offerDetails",
-							params: { offer: JSON.stringify(item) },
-						})
-					}
-					className="flex-1 bg-green-100 border border-green-300 py-3 rounded-xl flex-row items-center justify-center gap-2"
-				>
-					<Eye size={16} color="#15803D" />
-					<Text className="text-green-700 font-semibold text-sm">Ver detalhes</Text>
-				</Pressable>
-
-				<Pressable
-					onPress={() =>
-						router.push({
-							pathname: "/pages/createSale",
-							params: { offer: JSON.stringify(item) },
-						})
-					}
-					className="flex-1 bg-violet-100 border border-violet-300 py-3 rounded-xl flex-row items-center justify-center gap-2"
-				>
-					<Pencil size={16} color="#6D28D9" />
-					<Text className="text-violet-700 font-semibold text-sm">Editar</Text>
-				</Pressable>
-			</View>
-
-			{canCancel ? (
-				<Pressable
-					onPress={() => setConfirmCancelVisible(true)}
-					disabled={cancelling}
-					className={`mt-2 border border-red-300 py-3 rounded-xl flex-row items-center justify-center gap-2 ${cancelling ? "bg-red-50 opacity-60" : "bg-white"}`}
-				>
-					{cancelling ? (
-						<ActivityIndicator size="small" color="#DC2626" />
-					) : (
-						<Trash2 size={16} color="#DC2626" />
-					)}
-					<Text className="text-red-600 font-semibold text-sm">
-						{cancelling ? "Cancelando..." : "Cancelar oferta"}
-					</Text>
-				</Pressable>
-			) : null}
-		</View>
-		<ConfirmationModal
-			visible={confirmCancelVisible}
-			title="Cancelar oferta"
-			message="Tem certeza que deseja cancelar esta oferta? Essa ação não poderá ser desfeita."
-			confirmLabel="Cancelar oferta"
-			cancelLabel="Voltar"
-			destructive
-			loading={cancelling}
-			onConfirm={handleCancel}
-			onCancel={() => setConfirmCancelVisible(false)}
-		/>
+			<ConfirmationModal
+				visible={confirmCancelVisible}
+				title="Cancelar oferta"
+				message="Tem certeza que deseja cancelar esta oferta? Essa ação não poderá ser desfeita."
+				confirmLabel="Cancelar oferta"
+				cancelLabel="Voltar"
+				destructive
+				loading={cancelling}
+				onConfirm={handleCancel}
+				onCancel={() => setConfirmCancelVisible(false)}
+			/>
 		</>
 	)
 }
@@ -295,9 +305,11 @@ export default function MyOffersScreen() {
 		}
 	}
 
-	useEffect(() => {
-		loadMyOffers()
-	}, [])
+	useFocusEffect(
+		useCallback(() => {
+			loadMyOffers()
+		}, []),
+	)
 
 	return (
 		<View className="flex-1 bg-gray-50">
@@ -305,7 +317,16 @@ export default function MyOffersScreen() {
 				title="Minhas ofertas"
 				subtitle="Gerencie suas ofertas de açaí"
 				showBack
-				rightAction={<Pressable onPress={() => router.push("/pages/createSale")} accessibilityRole="button" accessibilityLabel="Criar oferta" className="h-10 w-10 items-center justify-center rounded-full bg-white/20"><Plus size={23} color="#FFFFFF" /></Pressable>}
+				rightAction={
+					<Pressable
+						onPress={() => router.push("/pages/createSale")}
+						accessibilityRole="button"
+						accessibilityLabel="Criar oferta"
+						className="h-10 w-10 items-center justify-center rounded-full bg-white/20"
+					>
+						<Plus size={23} color="#FFFFFF" />
+					</Pressable>
+				}
 			/>
 
 			{loading ? (
