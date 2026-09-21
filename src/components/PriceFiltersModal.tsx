@@ -21,6 +21,7 @@ type Props = {
 	selectedDate?: string | null
 	onDateChange?: (value: string | null) => void
 	showPeriodFilter?: boolean
+	showAllMunicipalities?: boolean
 	onClose: () => void
 }
 
@@ -41,7 +42,9 @@ function formatDate(value?: string | null) {
 export function PriceFiltersModal(props: Props) {
 	const [datePickerVisible, setDatePickerVisible] = useState(false)
 	const options = [
-		{ value: "all", label: "Todos os municípios" },
+		...(props.showAllMunicipalities !== false
+			? [{ value: "all", label: "Todos os municípios" }]
+			: []),
 		...props.municipalities.map((value) => ({ value, label: value })),
 	]
 
