@@ -1,3 +1,4 @@
+import { AdminProfileSelector } from "@/components/AdminProfileSelector"
 // _layout.tsx
 import { CustomToast } from "@/components/CustomToast"
 import { AuthContextProvider } from "@/contexts/AuthContext"
@@ -75,6 +76,7 @@ function RootLayoutNav() {
 				<Stack.Protected guard={!isLoggedIn}>
 					<Stack.Screen name="index" />
 					<Stack.Screen name="auth/register" />
+					<Stack.Screen name="auth/forgot-password" />
 				</Stack.Protected>
 
 				<Stack.Protected guard={isLoggedIn}>
@@ -82,6 +84,7 @@ function RootLayoutNav() {
 					<Stack.Screen name="pages" />
 				</Stack.Protected>
 			</Stack>
+			<AdminProfileSelector required />
 			<Toast
 				config={{
 					success: (props) => <CustomToast {...props} type="success" />,
