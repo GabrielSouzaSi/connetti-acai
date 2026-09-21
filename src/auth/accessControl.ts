@@ -27,12 +27,20 @@ export const FEATURE_ACCESS = {
 export type Profile = keyof typeof PROFILE_REGISTRY
 export type Feature = keyof typeof FEATURE_ACCESS
 
-export function getUserProfiles(user: UserDTO | null): string[] {
+export function isAdmin(user: UserDTO | null): boolean {
+	return user?.roles?.some((role) => role.toLowerCase() === "admin") ?? false
+}
+
+export function getUserProfiles(user: UserDTO | null, activeProfile?: Profile | null): string[] {
 	if (!user) return []
 
 	const profileType = user.profile_type?.toLowerCase()
 	const roles = user.roles?.map((role) => role.toLowerCase()) ?? []
 	const profiles = new Set(roles)
+
+	if (isAdmin(user) && activeProfile) {
+		return [...roles.filter((role) => !["producer", "buyer", "produtor", "comprador"].includes(role)), activeProfile]
+	}
 
 	if (profileType) {
 		for (const [profile, definition] of Object.entries(PROFILE_REGISTRY)) {
@@ -51,11 +59,13 @@ export function hasRole(user: UserDTO | null, ...roles: string[]): boolean {
 }
 
 export function hasPermission(user: UserDTO | null, ...permissions: string[]): boolean {
+	if (isAdmin(user)) return true
 	const userPermissions = user?.permissions ?? []
 	return permissions.some((permission) => userPermissions.includes(permission))
 }
 
 export function canAccessFeature(user: UserDTO | null, feature: Feature): boolean {
+	if (isAdmin(user)) return true
 	const rule: {
 		readonly roles?: readonly string[]
 		readonly permissions?: readonly string[]
