@@ -2,7 +2,7 @@
 import { Button } from "@/components/Button"
 import { Field } from "@/components/input"
 import { useAuth } from "@/hooks/useAuth"
-import { useRouter } from "expo-router"
+import { Href, useRouter } from "expo-router"
 import React, { useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import {
@@ -13,6 +13,7 @@ import {
 	ScrollView,
 	StatusBar,
 	Text,
+	Pressable,
 	View,
 } from "react-native"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
@@ -146,6 +147,14 @@ export default function App() {
 										{errors.password.message}
 									</Text>
 								)}
+
+								<Pressable
+									onPress={() => router.push("/auth/forgot-password" as Href)}
+									className="self-end py-1"
+									accessibilityRole="button"
+								>
+									<Text className="font-semibold text-primary">Esqueci minha senha</Text>
+								</Pressable>
 
 								<Button
 									onPress={handleSubmit(handleSignIn)}
